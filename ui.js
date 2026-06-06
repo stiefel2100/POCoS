@@ -64,7 +64,7 @@ const knownProps = [
     // Geometrie
     "x","y","breite","hoehe","farbe",
     "xM","yM","radius","ebene",
-    "xA","yA","xE","yE","dicke", "winkel", "z", "ground", "gravity", "vx", "vy_move", "rotSpeed", "pivotX", "pivotY",
+    "xA","yA","xE","yE","dicke", "z",
 
     // Bewegung
     "vx","vy_move","gravity","ground",
@@ -121,7 +121,7 @@ const knownMethods = [
     "rotieren",
     "RotationBeenden",
     "fallen",
-    "FallBeenden",
+    "FallenBeenden",
     "huepfen",
     "huepfenBeenden",
     "nachVorne",
@@ -1959,4 +1959,3 @@ window.addEventListener("DOMContentLoaded", () => {
     }, 4000);
 
 });
-console.log(canvas);

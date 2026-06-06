@@ -249,7 +249,7 @@ body {
 #rulerLeft {
     width: 30px;
     height: 600px;
-    background-color: f4f4f4;
+    background-color: #f4f4f4;
     border-right: 1px solid #999;
     background-color: #f4f4f4; /* Lineale */
     display: block;
@@ -266,14 +266,20 @@ body {
 
 
 #canvasWrapper {
+    position: relative;
     flex: 1;
-    background: transparent;   /* hellgrau */
-    display: flex;
     flex-direction: column;
-    display: flex;
-    flex-direction: column;
-    background-color: #f4f4f4;   /* hellgrau */
+    background-color: #f4f4f4;
 
+    /* ✅ gleichmäßiges POCoS-Muster */
+    background-image: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' width='260' height='160'>\
+  <text x='20' y='60' font-size='26' fill='black' opacity='0.08'>POCoS</text>\
+  <text x='120' y='130' font-size='26' fill='black' opacity='0.08'>POCoS</text>\
+</svg>");
+
+    background-repeat: repeat;
+    background-size: 260px 160px;
 }
 
 
@@ -564,4 +570,72 @@ body {
     column-count: 3;
     column-gap: 40px;
     white-space: pre-wrap;
+}
+
+
+/* ✅ Wasserzeichen */
+#canvasWrapper::after {
+    content: "";
+    z-index: 3;  /* Logo */
+    position: absolute;
+    right: 40px;
+    top: 50%;
+    transform: translateY(-50%);
+
+    width: 300px;   /* 🔥 3x größer */
+    height: 300px;
+
+    opacity: 0.08;
+    pointer-events: none;
+
+    background-image: url("pocos.png");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 180px;  /* Logo selbst */
+}
+
+#canvasWrapper::before {
+    content: "";
+    z-index: 2;  /* Kreis */
+    position: absolute;
+    right: 40px;
+    top: 50%;
+    transform: translateY(-50%);
+
+    width: 300px;
+    height: 300px;
+
+    opacity: 0.08;
+    pointer-events: none;
+
+    background-image: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'>\
+  <defs>\
+    <path id='circle' d='M100,100 m-80,0 a80,80 0 1,1 160,0 a80,80 0 1,1 -160,0'/>\
+  </defs>\
+  <text font-size='14' fill='black'>\
+    <textPath href='%23circle'>\
+        POCoS • POCoS • POCoS • POCoS • POCoS • POCoS • POCoS • POCoS • POCoS • POCoS •\
+    </textPath>\
+  </text>\
+</svg>");
+
+    background-repeat: no-repeat;
+    background-size: contain;
+}
+
+#canvasWrapper .logo-mask {
+    position: absolute;
+    right: 40px;
+    top: 50%;
+    transform: translateY(-50%);
+
+    width: 320px;
+    height: 320px;
+
+    background-color: #f4f4f4; /* gleiche Farbe wie Hintergrund */
+    border-radius: 50%;        /* rund → sieht besser aus */
+
+    pointer-events: none;
+    z-index: 1;
 }
