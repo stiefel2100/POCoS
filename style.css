@@ -1,0 +1,567 @@
+body {
+    margin:0;
+    font-family:Arial;
+
+}
+
+/* LAYOUT */
+#container {
+    display:flex;
+    height: 100vh; /* 🔥 NEU */
+
+}
+
+
+#left {
+    width:320px;
+    border-right:2px solid #444;
+    padding:10px;
+    box-sizing:border-box;
+
+    display:flex;
+    flex-direction:column;
+}
+
+#right {
+    display:flex;
+    flex-direction: column;
+    align-items: stretch;  /* 🔥 statt flex-start */
+    position: relative;
+    flex: 1;               /* 🔥 NEU */
+    background-color: #f4f4f4;
+}
+
+
+
+
+
+/* MENÜ */
+#menuBar {
+    display:flex;
+    gap:6px;
+    margin-bottom:8px;
+}
+
+#menuBar button {
+    flex:1;
+    height:40px;
+    font-size:20px;
+}
+
+/* EDITOR: Wrapper / Line Numbers / Background / Textarea */
+#editorWrapper {
+    display:flex;
+    flex:1;
+    min-height:0;
+    border:1px solid #ccc;
+    margin-bottom:8px;
+    overflow:hidden;
+    position:relative; /* wichtig für overlay */
+}
+
+/* Zeilennummern: scrollbar & fixe Breite */
+#lineNumbers {
+    width:40px;
+    background:#eee;
+    text-align:right;
+    font-family:monospace;
+    font-size:14px;
+    overflow-y:hidden;
+    overflow-x:hidden;
+    border-right:1px solid #ddd;
+    padding:2px;
+    padding-left:2px;
+    padding-top:0px;
+    box-sizing:border-box;
+    bottom:0;
+}
+
+#lineNumbers div {
+    transition: height 0.25s ease;
+}
+
+/* Hintergrund-Layer: liegt hinter der textarea und zeigt farbige Zeilen */
+#editorBackground {
+    position:absolute;
+    left:40px;    /* gleiche Breite wie #lineNumbers */
+    right:0;
+    top:0;
+    bottom:0;
+    z-index:1;
+    pointer-events:none; /* keine Mausinteraktion */
+    overflow:hidden;
+    white-space:nowrap;
+}
+
+/* einzelne Hintergrund-Zeile */
+.bgLine {
+    height:20px;
+    box-sizing:border-box;
+    transition: height 0.25s ease;
+}
+
+/* Textarea über dem Hintergrund */
+#codeEditor {
+    position: absolute;
+    left:40px;
+    right:0;
+    top:0;
+    bottom:0;
+    border:none;
+    outline:none;
+    font-family:monospace;
+    font-size:14px;
+    padding-top:1px;
+    padding-bottom:3px;
+    resize:none;
+    line-height:20px;   /* muss mit .bgLine.height übereinstimmen */
+    tab-size:2;
+    z-index:2;
+    background:transparent; /* transparent, damit background sichtbar ist */
+    color: #000;
+    overflow:auto;
+    white-space:pre;
+
+}
+
+/* Error arrow style */
+.errorArrow {
+    color: #c0392b; /* dunkelrot */
+    font-weight: 700;
+    font-size: 14px;
+    margin-right: 4px;
+    user-select: none;
+}
+
+/* Out-of-bounds arrow (orange) */
+.errorArrowOut {
+    color: #d35400; /* orange */
+    font-weight: 700;
+    font-size: 14px;
+    margin-right: 4px;
+    user-select: none;
+}
+
+/* BUTTONS */
+#buttons {
+    display:flex;
+    gap:5px;
+    margin-bottom:8px;
+}
+
+#buttons button {
+    flex:1;
+}
+
+/* PALETTE */
+#palette {
+    display:grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap:5px;
+
+    margin-top:auto;
+}
+
+.colorRow {
+    display:flex;
+    align-items:center;
+    gap:4px;
+    font-size:11px;
+    cursor:pointer;
+    padding: 4px;
+    border-radius: 3px;
+    transition: background 0.1s;
+}
+
+.colorRow:hover {
+    background: #f0f0f0;
+}
+
+.colorBox {
+    width:14px;
+    height:14px;
+    border:1px solid black;
+    border-radius: 2px;
+}
+
+/* kleine Collapse-Button-Stile */
+.collapseBtn {
+    cursor:pointer;
+    font-size:12px;
+    user-select:none;
+    width:15px;
+    text-align:center;
+}
+
+.collapseBtn:hover {
+    background:#ddd;
+    border-radius:2px;
+}
+
+#bottom-area {
+    width: 100%;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px;
+}
+
+#top-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    min-height: 0;   /* ✅ wichtig */
+}
+
+#uml-overlay {
+    position: relative; /* wichtig für absolute Positionierung der Klassen */
+    bottom: 0;
+    left: 0;
+    right: 0;
+
+    height: 150px;
+    overflow: hidden;
+
+    display: flex;
+    align-items: flex-start;
+    box-shadow: 0 -6px 15px rgba(0,0,0,0.15);
+    transition: height 0.35s ease, transform 0.35s ease;
+}
+
+/* Hover = ganzer Bereich expandiert */
+#uml-overlay:hover {
+    height: 340px;
+    overflow: visible;
+
+    transform: translateY(-80px); /* 🔥 DAS löst dein Problem */
+}
+
+#rulerTop {
+    height: 20px;
+    width: 800px;
+    display: block;
+
+    border-bottom: 1px solid #999;
+    background-color: #f4f4f4; /* Lineale */
+}
+
+#rulerLeft {
+    width: 30px;
+    height: 600px;
+    background-color: f4f4f4;
+    border-right: 1px solid #999;
+    background-color: #f4f4f4; /* Lineale */
+    display: block;
+}
+
+#mainCanvas {
+    display: block;
+    width: 800px;
+    height: 600px;
+    background: white;
+    background-color: white;   /* Zeichenfläche */
+    display: block;
+}
+
+
+#canvasWrapper {
+    flex: 1;
+    background: transparent;   /* hellgrau */
+    display: flex;
+    flex-direction: column;
+    display: flex;
+    flex-direction: column;
+    background-color: #f4f4f4;   /* hellgrau */
+
+}
+
+
+#rulerRow {
+    display: flex;
+    align-items: flex-start;
+    flex: 1;   /* ✅ WICHTIG */
+}
+
+
+
+
+.uml-class:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+}
+
+
+.class-name.uml-class-hover {
+    background-color: rgba(255, 230, 120, 0.8);
+}
+
+
+/* Klassenname (grau hinterlegt) */
+.class-name {
+    font-size: 12px;
+    cursor: pointer;
+    padding: 4px;
+
+    font-weight: bold;
+    text-align: center;
+
+    background: #e6e6e6;   /* 🔥 neu */
+    border-bottom: 1.5px solid black;
+    transition: background 0.2s ease;
+
+}
+
+/* Attribute */
+.class-attributes,
+.class-methods {
+
+    line-height: 16px;
+    padding: 4px;
+    font-family: monospace;
+
+    border-bottom: 1px solid black;
+
+    transition: all 0.25s ease;
+
+}
+
+
+
+
+/* Methoden brauchen keine Border */
+.class-methods {
+    border-bottom: none;
+}
+
+/* Beim Hover sichtbar */
+#uml-overlay:hover .class-attributes,
+#uml-overlay:hover .class-methods {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+
+   #uml-tooltip {
+       position: fixed;
+       background: #2b2b2b;
+       color: #f0f0f0;
+
+       padding: 8px;
+       border-radius: 6px;
+
+       font-size: 12px;
+       font-family: monospace;
+
+       max-width: 240px;
+
+       pointer-events: none;
+       z-index: 5000;
+
+       display: none;
+
+       white-space: pre-line; /* 🔥 wichtig für \n */
+   }
+
+.uml-hover-line {
+    background: rgba(255, 235, 100, 0.6);
+}
+
+#pauseBtn {
+    padding: 6px 12px;
+    cursor: pointer;
+}
+
+/* ✅ Zustand: Weiter (Pause aktiv) */
+#pauseBtn.active {
+    background-color: #007bff;
+    color: white;
+}
+
+
+/* Objektkarte links fix */
+#object-card {
+    border-radius: 10px;
+    min-width: 170px;
+    border: 1px solid black;
+    background: white;
+    overflow: hidden;
+    flex-shrink: 0;
+    display: none; /* standardmäßig versteckt */
+}
+
+
+
+
+/* Attributbereich */
+#object-card .class-attributes {
+    padding: 4px;
+}
+
+/* Zeilen */
+#object-card .uml-line {
+    font-size: 10px;
+}
+
+
+/* Klassen = eckig */
+.uml-class {
+    border: 1px solid black;
+    background: white;
+    width: 170px;
+    font-size: 12px;
+    border-radius: 0;   /* ✅ eckig */
+}
+
+
+/* Klassenblock rechts */
+#uml-classes {
+    margin-left: auto;
+    display: flex;
+    gap: 12px;
+    padding-right: 10px; /* Abstand zum Rand */
+}
+#lineNumbers div,
+.bgLine {
+    transition: height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+}
+
+/* ✅ spezielle Optik für Gruppe */
+#gruppe-card {
+    border-radius: 0;
+    margin-left: 10px;
+
+    border: none;
+    position: relative;
+}
+
+#gruppe-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+
+    pointer-events: none;
+
+    background:
+            repeating-linear-gradient(
+                    to right,
+                    #666 0px,
+                    #666 8px,        /* ✅ Länge der Striche */
+                    transparent 8px,
+                    transparent 14px /* ✅ Abstand */
+            ) top,
+
+            repeating-linear-gradient(
+                    to right,
+                    #666 0px,
+                    #666 8px,
+                    transparent 8px,
+                    transparent 14px
+            ) bottom,
+
+            repeating-linear-gradient(
+                    to bottom,
+                    #666 0px,
+                    #666 8px,
+                    transparent 8px,
+                    transparent 14px
+            ) left,
+
+            repeating-linear-gradient(
+                    to bottom,
+                    #666 0px,
+                    #666 8px,
+                    transparent 8px,
+                    transparent 14px
+            ) right;
+
+    background-size: 100% 1px, 100% 1px, 1px 100%, 1px 100%;
+    background-repeat: no-repeat;
+}
+#right:fullscreen #rulerRow {
+    margin: 0;
+}
+
+#right:fullscreen #canvasWrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+/* =========================
+   ✅ Vollbild-Modus (robust)
+========================= */
+
+#right.fullscreen-mode #rulerTop,
+#right.fullscreen-mode #rulerLeft,
+#right.fullscreen-mode #uml-overlay {
+    display: none !important;
+}
+
+/* Canvas zentrieren */
+#right.fullscreen-mode #canvasWrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+/* =========================
+   ✅ Hilfedatei
+========================= */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 999;
+    left: 0; top: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.5);
+}
+
+.modal-content {
+    background: white;
+    margin: 5% auto;
+    padding: 20px;
+    width: 80%;              /* ✅ breit */
+    max-height: 80%;
+    overflow-y: auto;
+    border-radius: 8px;
+    font-family: monospace;
+    white-space: pre-wrap;
+}
+
+.close {
+    float: right;
+    cursor: pointer;
+    font-size: 20px;
+}
+
+#helpModal {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+
+#helpBox {
+    background: white;
+    width: 80%;
+    max-height: 80%;
+    padding: 20px;
+    border-radius: 10px;
+    overflow-y: auto;
+    font-family: monospace;
+}
+
+/* ✅ DAS IST DEIN 2-SPALTEN-FIX */
+#helpText {
+    column-count: 3;
+    column-gap: 40px;
+    white-space: pre-wrap;
+}

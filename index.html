@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>POCoS</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/x-icon" href="pocos_favicon.ico">
+</head>
+
+<body>
+
+<div id="container">
+
+    <div id="left">
+
+        <!-- MENÜ -->
+        <div id="menuBar">
+            <button onclick="openFile()" title="Öffnen">📂</button>
+            <button onclick="saveFile()" title="Speichern unter...">💾</button>
+
+            <button onclick="toggleFullscreen()" title="Vollbildmodus">➡️</button>
+            <button onclick="showHelp()" title="Hilfe">❓</button>
+        </div>
+
+        <!-- EDITOR: Hintergrund-Layer + Textarea -->
+        <div id="editorWrapper">
+            <div id="lineNumbers"></div>
+            <div id="editorBackground" aria-hidden="true"></div>
+            <textarea id="codeEditor" spellcheck="false" wrap="off"></textarea>
+        </div>
+
+        <!-- BUTTONS -->
+        <div id="buttons">
+            <button onclick="executeCode()">Ausführen</button>
+            <button onclick="clearCode()">Löschen</button>
+            <button onclick="runSelection()">Markierung</button>
+            <button id="pauseBtn" onclick="pauseAnimation()">Pause</button>
+
+        </div>
+
+        <!-- PALETTE -->
+        <div id="palette"></div>
+
+    </div>
+
+    <div id="right">
+
+        <div id="top-area">
+            <div id="canvasWrapper">
+
+                <canvas id="rulerTop"></canvas>
+
+                <div id="rulerRow">
+                    <canvas id="rulerLeft"></canvas>
+                    <canvas id="mainCanvas"></canvas>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- 🔥 NEU: Overlay -->
+        <div id="uml-overlay">
+            <div id="bottom-area"> <!-- 🔚 bottom-area wird ganz unten geschlossen -->
+
+                <!-- ✅ Objektkarte links -->
+                <div id="object-card"></div>
+                <!-- ✅ Gruppe -->
+                <div id="gruppe-card" class="uml-class" style="display:none;">
+                    <div class="class-name">Gruppe</div>
+
+                    <div class="class-attributes">
+                        <!-- leer -->
+                    </div>
+
+                    <div class="class-methods">
+                        <div class="uml-line">einbinden(name)</div>
+                        <div class="uml-line">entfernen(name)</div>
+
+                        <div class="uml-line">verschieben(dx,dy)</div>
+
+                        <div class="uml-line">wandern(dx,dy)</div>
+                        <div class="uml-line">WandernBeenden()</div>
+
+                        <div class="uml-line">fallen(yBoden [opt])</div>
+                        <div class="uml-line">FallBeenden()</div>
+
+                        <div class="uml-line">huepfen(yBoden)</div>
+                        <div class="uml-line">huepfenBeenden()</div>
+
+                        <div class="uml-line">drehen(Winkel)</div>
+                        <div class="uml-line">DrehpunktSetzen(x,y)</div>
+
+                        <div class="uml-line">rotieren(v)</div>
+                        <div class="uml-line">RotationBeenden()</div>
+
+                        <div class="uml-line">einblenden()</div>
+                        <div class="uml-line">ausblenden()</div>
+                    </div>
+                </div>
+
+
+                <!-- ✅ Wrapper für alle Klassenkarten -->
+                <div id="uml-classes"> <!-- 🔚 schließt nach letzter Klassenkarte -->
+
+                    <!-- Rechteck -->
+                    <div class="uml-class">
+                        <div class="class-name">Rechteck</div>
+
+                        <div class="class-attributes">
+                            <div class="uml-line">x</div>
+                            <div class="uml-line">y</div>
+                            <div class="uml-line">breite</div>
+                            <div class="uml-line">hoehe</div>
+                            <div class="uml-line">farbe</div>
+                        </div>
+
+                        <div class="class-methods">
+                            <div class="uml-line">wandern(dx,dy)</div>
+                            <div class="uml-line">WandernBeenden()</div>
+                            <div class="uml-line">fallen(yBoden [opt])</div>
+                            <div class="uml-line">FallBeenden()</div>
+                            <div class="uml-line">huepfen(yBoden)</div>
+                            <div class="uml-line">huepfenBeenden()</div>
+                            <div class="uml-line">drehen(Winkel)</div>
+                            <div class="uml-line">DrehpunktSetzen(x,y)</div>
+                            <div class="uml-line">rotieren(v)</div>
+                            <div class="uml-line">RotationBeenden()</div>
+                            <div class="uml-line">nachVorne()</div>
+                            <div class="uml-line">inDenVordergrund()</div>
+                            <div class="uml-line">nachHinten()</div>
+                            <div class="uml-line">inDenHintergrund()</div>
+                            <div class="uml-line">einblenden()</div>
+                            <div class="uml-line">ausblenden()</div>
+                        </div>
+                    </div> <!-- 🔚 Rechteck -->
+
+
+                    <!-- Dreieck -->
+                    <div class="uml-class">
+                        <div class="class-name">Dreieck</div>
+
+                        <div class="class-attributes">
+                            <div class="uml-line">x</div>
+                            <div class="uml-line">y</div>
+                            <div class="uml-line">breite</div>
+                            <div class="uml-line">hoehe</div>
+                            <div class="uml-line">farbe</div>
+                        </div>
+
+                        <div class="class-methods">
+                            <div class="uml-line">wandern(dx,dy)</div>
+                            <div class="uml-line">WandernBeenden()</div>
+                            <div class="uml-line">fallen(yBoden [opt])</div>
+                            <div class="uml-line">FallBeenden()</div>
+                            <div class="uml-line">huepfen(yBoden)</div>
+                            <div class="uml-line">huepfenBeenden()</div>
+                            <div class="uml-line">drehen(Winkel)</div>
+                            <div class="uml-line">DrehpunktSetzen(x,y)</div>
+                            <div class="uml-line">rotieren(v)</div>
+                            <div class="uml-line">RotationBeenden()</div>
+                            <div class="uml-line">nachVorne()</div>
+                            <div class="uml-line">inDenVordergrund()</div>
+                            <div class="uml-line">nachHinten()</div>
+                            <div class="uml-line">inDenHintergrund()</div>
+                            <div class="uml-line">einblenden()</div>
+                            <div class="uml-line">ausblenden()</div>
+                        </div>
+                    </div> <!-- 🔚 Dreieck -->
+
+
+                    <!-- Kreis -->
+                    <div class="uml-class">
+                        <div class="class-name">Kreis</div>
+
+                        <div class="class-attributes">
+                            <div class="uml-line">xM</div>
+                            <div class="uml-line">yM</div>
+                            <div class="uml-line">radius</div>
+                            <div class="uml-line">farbe</div>
+                        </div>
+
+                        <div class="class-methods">
+                            <div class="uml-line">wandern(dx,dy)</div>
+                            <div class="uml-line">WandernBeenden()</div>
+                            <div class="uml-line">fallen(yBoden [opt])</div>
+                            <div class="uml-line">FallBeenden()</div>
+                            <div class="uml-line">huepfen(yBoden)</div>
+                            <div class="uml-line">huepfenBeenden()</div>
+                            <div class="uml-line">drehen(Winkel)</div>
+                            <div class="uml-line">DrehpunktSetzen(x,y)</div>
+                            <div class="uml-line">rotieren(v)</div>
+                            <div class="uml-line">RotationBeenden()</div>
+                            <div class="uml-line">nachVorne()</div>
+                            <div class="uml-line">inDenVordergrund()</div>
+                            <div class="uml-line">nachHinten()</div>
+                            <div class="uml-line">inDenHintergrund()</div>
+                            <div class="uml-line">einblenden()</div>
+                            <div class="uml-line">ausblenden()</div>
+                        </div>
+                    </div> <!-- 🔚 Kreis -->
+
+
+                    <!-- Ellipse -->
+                    <div class="uml-class">
+                        <div class="class-name">Ellipse</div>
+
+                        <div class="class-attributes">
+                            <div class="uml-line">x</div>
+                            <div class="uml-line">y</div>
+                            <div class="uml-line">breite</div>
+                            <div class="uml-line">hoehe</div>
+                            <div class="uml-line">farbe</div>
+                        </div>
+
+                        <div class="class-methods">
+                            <div class="uml-line">wandern(dx,dy)</div>
+                            <div class="uml-line">WandernBeenden()</div>
+
+                            <div class="uml-line">fallen(yBoden [opt])</div>
+                            <div class="uml-line">FallBeenden()</div>
+                            <div class="uml-line">huepfen(yBoden)</div>
+                            <div class="uml-line">huepfenBeenden()</div>
+
+                            <div class="uml-line">drehen(Winkel)</div>
+                            <div class="uml-line">DrehpunktSetzen(x,y)</div>
+                            <div class="uml-line">rotieren(v)</div>
+                            <div class="uml-line">RotationBeenden()</div>
+
+                            <div class="uml-line">nachVorne()</div>
+                            <div class="uml-line">inDenVordergrund()</div>
+                            <div class="uml-line">nachHinten()</div>
+                            <div class="uml-line">inDenHintergrund()</div>
+
+                            <div class="uml-line">einblenden()</div>
+                            <div class="uml-line">ausblenden()</div>
+                        </div>
+                    </div> <!-- 🔚 Ellipse -->
+
+
+                    <!-- Linie -->
+                    <div class="uml-class">
+                        <div class="class-name">Linie</div>
+
+                        <div class="class-attributes">
+                            <div class="uml-line">xA</div>
+                            <div class="uml-line">yA</div>
+                            <div class="uml-line">xE</div>
+                            <div class="uml-line">yE</div>
+                            <div class="uml-line">dicke</div>
+                            <div class="uml-line">farbe</div>
+                        </div>
+
+                        <div class="class-methods">
+                            <div class="uml-line">wandern(dx,dy)</div>
+                            <div class="uml-line">WandernBeenden()</div>
+
+                            <div class="uml-line">fallen(yBoden [opt])</div>
+                            <div class="uml-line">FallBeenden()</div>
+                            <div class="uml-line">huepfen(yBoden)</div>
+                            <div class="uml-line">huepfenBeenden()</div>
+
+                            <div class="uml-line">drehen(Winkel)</div>
+                            <div class="uml-line">DrehpunktSetzen(x,y)</div>
+                            <div class="uml-line">rotieren(v)</div>
+                            <div class="uml-line">RotationBeenden()</div>
+
+                            <div class="uml-line">nachVorne()</div>
+                            <div class="uml-line">inDenVordergrund()</div>
+                            <div class="uml-line">nachHinten()</div>
+                            <div class="uml-line">inDenHintergrund()</div>
+
+                            <div class="uml-line">einblenden()</div>
+                            <div class="uml-line">ausblenden()</div>
+                        </div>
+                    </div> <!-- 🔚 Linie -->
+
+                </div> <!-- 🔚 uml-classes -->
+
+            </div> <!-- 🔚 bottom-area -->
+
+        </div> <!-- 🔚 uml-overlay -->
+
+    </div> <!-- right -->
+
+</div> <!-- container -->
+
+
+<script src="canvas.js"></script>
+<script src="ui.js"></script>
+
+<div id="uml-tooltip"></div>
+
+<div id="helpModal" style="display:none;">
+    <div id="helpBox">
+        <span onclick="closeHelp()" style="float:right; cursor:pointer">✖</span>
+        <div id="helpText"></div>
+    </div>
+</div>
+
+
+</body>
+</html>
