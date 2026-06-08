@@ -42,7 +42,9 @@ let editorLines = [
     {text: "h.einblenden();", hidden: false},
     {text: "h.inDenHintergrund();", hidden: false},
     {text: "r1.fallen(500);", hidden: false},
-    {text: "k1.fallen(500);", hidden: false}
+    {text: "k1.fallen(500);", hidden: false},
+    {text: "warte(1900);", hidden: false},
+    {text: "h.farbe = \"weiss\";", hidden: false},
 ];
 let nextCollapseId = 1;
 let collapsed = {};

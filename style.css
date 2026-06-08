@@ -216,6 +216,8 @@ body {
 
 #uml-overlay {
     position: relative; /* wichtig für absolute Positionierung der Klassen */
+    z-index: 1000;
+    pointer-events: auto;
     bottom: 0;
     left: 0;
     right: 0;
@@ -262,24 +264,34 @@ body {
     background: white;
     background-color: white;   /* Zeichenfläche */
     display: block;
+    z-index: 10;
 }
 
 
 #canvasWrapper {
     position: relative;
     flex: 1;
-    flex-direction: column;
     background-color: #f4f4f4;
 
-    /* ✅ gleichmäßiges POCoS-Muster */
-    background-image: url("data:image/svg+xml;utf8,\
+    background-image:
+
+        /* ✅ Loch für Logo */
+            radial-gradient(
+                    circle at calc(100% - 250px) 50%,
+                    #f4f4f4 0px,
+                    #f4f4f4 210px,
+                    transparent 211px
+            ),
+
+                /* ✅ POCoS-Muster */
+            url("data:image/svg+xml;utf8,\
 <svg xmlns='http://www.w3.org/2000/svg' width='260' height='160'>\
   <text x='20' y='60' font-size='26' fill='black' opacity='0.08'>POCoS</text>\
   <text x='120' y='130' font-size='26' fill='black' opacity='0.08'>POCoS</text>\
 </svg>");
 
-    background-repeat: repeat;
-    background-size: 260px 160px;
+    background-repeat: no-repeat, repeat;
+    background-size: auto, 260px 160px;
 }
 
 
@@ -350,6 +362,7 @@ body {
 
    #uml-tooltip {
        position: fixed;
+       z-index: 2000;
        background: #2b2b2b;
        color: #f0f0f0;
 
@@ -576,14 +589,15 @@ body {
 /* ✅ Wasserzeichen */
 #canvasWrapper::after {
     content: "";
-    z-index: 3;  /* Logo */
+    z-index: 3;
+
     position: absolute;
-    right: 40px;
+    right: 50px;
     top: 50%;
     transform: translateY(-50%);
 
-    width: 300px;   /* 🔥 3x größer */
-    height: 300px;
+    width: 400px;
+    height: 400px;
 
     opacity: 0.08;
     pointer-events: none;
@@ -591,51 +605,28 @@ body {
     background-image: url("pocos.png");
     background-repeat: no-repeat;
     background-position: center;
-    background-size: 180px;  /* Logo selbst */
+    background-size: 240px;
 }
 
-#canvasWrapper::before {
-    content: "";
-    z-index: 2;  /* Kreis */
-    position: absolute;
-    right: 40px;
-    top: 50%;
-    transform: translateY(-50%);
 
-    width: 300px;
-    height: 300px;
 
-    opacity: 0.08;
-    pointer-events: none;
-
-    background-image: url("data:image/svg+xml;utf8,\
-<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'>\
-  <defs>\
-    <path id='circle' d='M100,100 m-80,0 a80,80 0 1,1 160,0 a80,80 0 1,1 -160,0'/>\
-  </defs>\
-  <text font-size='14' fill='black'>\
-    <textPath href='%23circle'>\
-        POCoS • POCoS • POCoS • POCoS • POCoS • POCoS • POCoS • POCoS • POCoS • POCoS •\
-    </textPath>\
-  </text>\
-</svg>");
 
     background-repeat: no-repeat;
     background-size: contain;
 }
 
-#canvasWrapper .logo-mask {
-    position: absolute;
-    right: 40px;
-    top: 50%;
-    transform: translateY(-50%);
 
-    width: 320px;
-    height: 320px;
+/* ✅ Wasserzeichen im Vollbild AUSBLENDEN */
+/* ✅ Vollbild: KEINE Wasserzeichen */
+#right.fullscreen-mode #canvasWrapper {
+    background-image: none !important;
+}
 
-    background-color: #f4f4f4; /* gleiche Farbe wie Hintergrund */
-    border-radius: 50%;        /* rund → sieht besser aus */
-
-    pointer-events: none;
-    z-index: 1;
+#right.fullscreen-mode #canvasWrapper::before,
+#right.fullscreen-mode #canvasWrapper::after {
+    content: none !important;
+    display: none !important;
+}
+#right.fullscreen-mode #canvasWrapper .logo-mask {
+    display: none !important;
 }

@@ -2297,16 +2297,13 @@ function scaleCanvasToScreen(){
 
     const scale = Math.min(scaleX, scaleY);
 
-    wrapper.style.transform = `scale(${scale})`;
-    wrapper.style.transformOrigin = "top left";
-
-    // ✅ zentrieren
-    const offsetX = (screenW - logicalWidth * scale) / 2;
-    const offsetY = (screenH - logicalHeight * scale) / 2;
-
+    // ✅ Mittelpunkt verwenden!
     wrapper.style.position = "absolute";
-    wrapper.style.left = offsetX + "px";
-    wrapper.style.top = offsetY + "px";
+    wrapper.style.left = "50%";
+    wrapper.style.top = "50%";
+
+    wrapper.style.transform = `translate(-50%, -50%) scale(${scale})`;
+    wrapper.style.transformOrigin = "center center";
 }
 
 function resetCanvasScale(){
