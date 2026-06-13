@@ -52,10 +52,9 @@
 
     <div id="right">
 
-        <!-- Panel-Mode Toggle (fixed, outside of transformed overlay to avoid positioning bugs) -->
-        <button id="panelModeBtn" class="panelToggleBtn" title="Panel-Modus: Dynamisch">⇅</button>
+            <!-- Panel-Mode Toggle was moved into the bottom overlay to be inside the right panel for touch devices -->
 
-        <div id="top-area">
+                <div id="top-area">
             <div id="canvasWrapper">
                 <div class="logo-mask"></div>
                 <canvas id="rulerTop"></canvas>
@@ -71,6 +70,9 @@
         <!-- 🔥 NEU: Overlay -->
         <div id="uml-overlay">
             <div id="bottom-area"> <!-- 🔚 bottom-area wird ganz unten geschlossen -->
+
+                <!-- Panel-Mode Toggle (in bottom-area for better touch behavior) -->
+                <button id="panelModeBtn" class="panelToggleBtn" title="Panel-Modus: Dynamisch">⇅</button>
 
                 <!-- ✅ Objektkarte links -->
                 <div id="object-card"></div>
