@@ -2,6 +2,7 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>POCoS</title>
     <link rel="stylesheet" href="style.css">
     <link rel="icon" type="image/x-icon" href="pocos_favicon.ico">
@@ -20,6 +21,12 @@
 
             <button onclick="toggleFullscreen()" title="Vollbildmodus">➡️</button>
             <button onclick="showHelp()" title="Hilfe">❓</button>
+            <button onclick="doUndo()" title="Rückgängig (Strg+Z / Cmd+Z)">↶</button>
+            <button onclick="restoreLastDeleted()" title="Letzten gelöschten Block wiederherstellen" aria-label="Block wiederherstellen" class="restore-btn">
+                <!-- Emoji-Papierkorb + grünes Plus (Variante 6) -->
+                <span class="restore-trash">🗑️</span>
+                <span class="restore-plus">➕</span>
+            </button>
         </div>
 
         <!-- EDITOR: Hintergrund-Layer + Textarea -->
@@ -44,6 +51,9 @@
     </div>
 
     <div id="right">
+
+        <!-- Panel-Mode Toggle (fixed, outside of transformed overlay to avoid positioning bugs) -->
+        <button id="panelModeBtn" class="panelToggleBtn" title="Panel-Modus: Dynamisch">⇅</button>
 
         <div id="top-area">
             <div id="canvasWrapper">
@@ -294,6 +304,32 @@
     <div id="helpBox">
         <span onclick="closeHelp()" style="float:right; cursor:pointer">✖</span>
         <div id="helpText"></div>
+    </div>
+</div>
+
+<!-- Modal: Block-Löschschutz -->
+<div id="blockDeleteModal" style="display:none; position:fixed; z-index:99999; left:0; top:0; right:0; bottom:0; background: rgba(0,0,0,0.4);">
+    <div style="width:420px; margin:80px auto; background:white; padding:16px; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.3);">
+        <div id="blockDeleteMsg" style="margin-bottom:12px; font-family: sans-serif;"></div>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button id="btnExpandBlock">Block ausklappen</button>
+            <button id="btnExpandAll">Alle ausklappen</button>
+            <button id="btnDeleteAnyway" style="background:#c0392b; color:white">Löschen</button>
+            <button id="btnCancelDelete">Abbrechen</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Restore / Delete all -->
+<div id="restoreModal" style="display:none; position:fixed; z-index:99999; left:0; top:0; right:0; bottom:0; background: rgba(0,0,0,0.4);">
+    <div style="width:540px; margin:60px auto; background:white; padding:16px; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.3);">
+        <div id="restoreMsg" style="margin-bottom:8px; font-family: sans-serif;"></div>
+        <div id="restoreList" style="max-height:260px; overflow:auto; border:1px solid #f0f0f0; margin-bottom:12px; padding:4px; background:#fafafa;"></div>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button id="btnRestoreSelected" disabled>Wiederherstellen (ausgewählte)</button>
+            <button id="btnDeleteAll" style="background:#c0392b; color:white">Kompletten Text löschen</button>
+            <button id="btnCancelRestore">Abbrechen</button>
+        </div>
     </div>
 </div>
 

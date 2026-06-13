@@ -714,9 +714,14 @@ function onMouseMove(e){
 
 // Maus-Handling up
 function onMouseUp(){
-    const card = document.getElementById("object-card");
-    if(card){
-        card.style.display = "none";
+    // Wenn nach Loslassen der Maustaste noch ein Objekt oder eine Gruppe
+    // ausgewählt ist, soll die Objektkarte sichtbar bleiben. Nur ausblenden,
+    // wenn nichts ausgewählt ist (z.B. Klick außerhalb der Zeichenfläche).
+    if (!selectedObject && !selectedGroup) {
+        const card = document.getElementById("object-card");
+        if (card) {
+            card.style.display = "none";
+        }
     }
     if(dragObject){
         delete dragObject._lastMouseX;
