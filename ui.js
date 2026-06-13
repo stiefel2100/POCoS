@@ -51,6 +51,211 @@ let collapsed = {};
 let lineErrors = {};
 let codeEditor = null; // wird im init gesetzt
 let ignoreInput = false;
+// Undo / Autosave
+let undoStack = [];
+const UNDO_MAX = 20;
+const AUTOSAVE_KEY = 'pocos_autosave_v1';
+let deletedStack = [];
+
+function pushUndo() {
+    try {
+        const snapshot = JSON.stringify(editorLines);
+        undoStack.push(snapshot);
+        if (undoStack.length > UNDO_MAX) undoStack.shift();
+    } catch (e) { /* ignore */ }
+}
+
+function doUndo() {
+    if (undoStack.length === 0) return;
+    const snap = undoStack.pop();
+    try {
+        editorLines = JSON.parse(snap);
+    } catch (e) { return; }
+    renderEditor();
+    checkErrors();
+    syncLineNumbers();
+    renderBackground();
+}
+
+function recordDeletedBlock(startIdx, lines) {
+    try {
+        deletedStack.push({ start: startIdx, lines: lines });
+        if (deletedStack.length > 10) deletedStack.shift();
+    } catch (e) {}
+}
+
+function restoreLastDeleted() {
+    // Öffnet das Restore-Modal und zeigt alle gelöschten Blöcke zur Auswahl an.
+    showRestoreModal();
+}
+
+function showRestoreModal() {
+    const modal = document.getElementById('restoreModal');
+    const msg = document.getElementById('restoreMsg');
+    const list = document.getElementById('restoreList');
+    const restoreBtn = document.getElementById('btnRestoreSelected');
+
+    if (!modal || !msg || !list) {
+        // Fallback: falls DOM-Elemente fehlen, verhalte dich wie vorher (restore last)
+        if (deletedStack.length > 0) {
+            const last = deletedStack.pop();
+            const idx = Math.min(last.start, editorLines.length);
+            editorLines.splice(idx, 0, ...last.lines);
+            renderEditor(); checkErrors(); syncLineNumbers(); renderBackground();
+        } else {
+            try { pushUndo(); } catch (e) {}
+            try { recordDeletedBlock(0, editorLines.map(l => ({...l}))); } catch(e){}
+            editorLines = [];
+            renderEditor(); checkErrors(); syncLineNumbers(); renderBackground();
+        }
+        return;
+    }
+
+    // Clear list
+    list.innerHTML = '';
+
+    if (deletedStack.length === 0) {
+        msg.innerText = 'Keine gelöschten Blöcke vorhanden.';
+        if (restoreBtn) restoreBtn.disabled = true;
+        modal.style.display = 'block';
+        return;
+    }
+
+    msg.innerText = 'Wähle die gelöschten Blöcke, die du wiederherstellen möchtest.';
+
+    // Render items (most recent first)
+    for (let i = deletedStack.length - 1; i >= 0; i--) {
+        const item = deletedStack[i];
+        const wrapper = document.createElement('div');
+        wrapper.className = 'restore-item';
+        wrapper.style.display = 'flex';
+        wrapper.style.alignItems = 'center';
+        wrapper.style.justifyContent = 'space-between';
+        wrapper.style.padding = '6px 4px';
+        wrapper.style.borderBottom = '1px solid rgba(0,0,0,0.06)';
+
+        const left = document.createElement('div');
+        left.style.display = 'flex';
+        left.style.alignItems = 'center';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.dataset.restoreIndex = i; // original index in deletedStack
+        cb.style.marginRight = '8px';
+
+        const preview = document.createElement('div');
+        preview.style.fontFamily = 'monospace';
+        preview.style.fontSize = '12px';
+        preview.style.color = '#222';
+        preview.style.maxWidth = '300px';
+        preview.style.overflow = 'hidden';
+        preview.style.whiteSpace = 'nowrap';
+        preview.style.textOverflow = 'ellipsis';
+
+        // Create preview from the deleted lines (first non-empty or first line)
+        let snippet = '';
+        for (let ln of item.lines) {
+            const t = (ln && ln.text) ? ln.text.trim() : '';
+            if (t !== '') { snippet = t; break; }
+        }
+        if (!snippet && item.lines.length > 0) snippet = (item.lines[0] && item.lines[0].text) || '';
+        preview.textContent = `@${item.start}: ${snippet}`;
+
+        left.appendChild(cb);
+        left.appendChild(preview);
+
+        const right = document.createElement('div');
+
+        const singleBtn = document.createElement('button');
+        singleBtn.textContent = 'Wiederherstellen';
+        singleBtn.dataset.restoreIndex = i;
+        singleBtn.style.marginLeft = '8px';
+
+        singleBtn.addEventListener('click', (e) => {
+            const idx = Number(e.currentTarget.dataset.restoreIndex);
+            restoreDeletedAt(idx);
+        });
+
+        right.appendChild(singleBtn);
+
+        wrapper.appendChild(left);
+        wrapper.appendChild(right);
+
+        list.appendChild(wrapper);
+    }
+
+    // enable restore selected button (state only)
+    if (restoreBtn) {
+        restoreBtn.disabled = true;
+    }
+
+    modal.style.display = 'block';
+}
+
+function hideRestoreModal(){
+    const modal = document.getElementById('restoreModal');
+    if(modal) modal.style.display = 'none';
+}
+
+function restoreDeletedAt(indexInDeletedStack) {
+    if (indexInDeletedStack < 0 || indexInDeletedStack >= deletedStack.length) return;
+    try { pushUndo(); } catch (e) {}
+
+    const entry = deletedStack.splice(indexInDeletedStack, 1)[0];
+    const idx = Math.min(entry.start, editorLines.length);
+    editorLines.splice(idx, 0, ...entry.lines.map(l => ({...l}))); // insert copies
+    hideRestoreModal();
+    renderEditor(); checkErrors(); syncLineNumbers(); renderBackground();
+}
+
+function restoreSelectedFromModal() {
+    const list = document.getElementById('restoreList');
+    if(!list) return;
+    const checks = Array.from(list.querySelectorAll('input[type=checkbox]:checked'));
+    if (checks.length === 0) return;
+
+    // Collect original indices and sort by start ascending to insert without disturbing later indices
+    const indices = checks.map(cb => Number(cb.dataset.restoreIndex));
+    // Map to entries
+    const entries = indices.map(i => ({ i, entry: deletedStack[i] }));
+    // sort by entry.start ascending
+    entries.sort((a,b) => a.entry.start - b.entry.start);
+
+    try { pushUndo(); } catch(e){}
+
+    // As we insert, keep track of offset caused by previous insertions
+    let offset = 0;
+    // To remove entries from deletedStack without changing following indices incorrectly,
+    // we'll mark indices to remove and then remove them after processing
+    const toRemoveSet = new Set(indices);
+
+    for (let obj of entries) {
+        const entry = obj.entry;
+        const originalIdx = obj.i;
+        const insertAt = Math.min(entry.start + offset, editorLines.length);
+        editorLines.splice(insertAt, 0, ...entry.lines.map(l => ({...l})));
+        offset += entry.lines.length;
+    }
+
+    // Remove restored entries from deletedStack (by original index values)
+    // Build new deletedStack keeping only items not restored
+    deletedStack = deletedStack.filter((_, idx) => !toRemoveSet.has(idx));
+
+    hideRestoreModal();
+    renderEditor(); checkErrors(); syncLineNumbers(); renderBackground();
+}
+
+// Autosave every 5s
+function startAutoSave() {
+    try {
+        setInterval(() => {
+            try {
+                const data = JSON.stringify(editorLines);
+                localStorage.setItem(AUTOSAVE_KEY, data);
+            } catch (e) {}
+        }, 5000);
+    } catch (e) {}
+}
 
 const blockColors = [
     "#cfe0ff",
@@ -315,6 +520,8 @@ function initEditor(){
         if (ignoreInput) return;
          const cursorStart = codeEditor.selectionStart;
          const cursorEnd   = codeEditor.selectionEnd;
+         // push undo snapshot before applying changes
+         try { pushUndo(); } catch(e){}
            // ✅ Spezialfall: Alles gelöscht
          if (codeEditor.value.trim() === "") {
              editorLines = [];
@@ -324,27 +531,138 @@ function initEditor(){
              return;
          }
 
-// ✅ BEST PRACTICE: Editor komplett neu übernehmen
-         const oldLines = editorLines;
+          // Besseres Mapping: sichtbare (textarea) Zeilen auf die bestehenden editorLines abbilden
+          // Dadurch gehen versteckte Zeilen (hidden) nicht verloren, weil sie nicht in der textarea auftauchen.
+          const oldLines = editorLines;
+          const visible = codeEditor.value.split("\n");
 
-         editorLines = codeEditor.value.split("\n").map((line, i) => ({
-             text: line,
-             hidden: oldLines[i]?.hidden || false,
-             _collapseId: oldLines[i]?._collapseId || null
-         }));
-         cleanupCollapsedBlocks();
+          // Spezialfall: komplett gelöscht → leeres Modell
+          if (visible.length === 1 && visible[0].trim() === "") {
+              editorLines = [];
+              cleanupCollapsedBlocks();
+              renderEditor();
+              syncLineNumbers();
+              renderBackground();
+              return;
+          }
 
+          // Erzeuge Liste der sichtbaren alten Zeilen und deren reale Indices
+          const oldVisible = [];
+          const oldVisibleIndices = [];
+          for (let i = 0; i < oldLines.length; i++) {
+              if (!oldLines[i].hidden) {
+                  oldVisible.push(oldLines[i].text);
+                  oldVisibleIndices.push(i);
+              }
+          }
 
-         const newText = editorLines
-             .filter(l => !l.hidden)
-             .map(l => l.text)
-             .join("\n");
+          const newEditor = [];
 
+          let oi = 0; // index in oldVisible
+          let ni = 0; // index in visible (new)
 
-         if (codeEditor.value !== newText) {
-             renderEditor();
-             didRender = true;
-         }
+          // iterate through original lines preserving hidden ones and reconciling visible lines
+          for (let i = 0; i < oldLines.length; i++) {
+              const ol = oldLines[i];
+              if (ol.hidden) {
+                  newEditor.push({ ...ol });
+                  continue;
+              }
+
+              // ol is a visible line in the old model
+              const oldText = oldVisible[oi];
+
+              // If both pointers in range
+              if (oi < oldVisible.length && ni < visible.length) {
+                  const newText = visible[ni];
+
+                  if (oldText === newText) {
+                      // unchanged
+                      newEditor.push({ text: newText, hidden: false, _collapseId: ol?._collapseId || null });
+                      oi++; ni++;
+                  } else if (oi + 1 < oldVisible.length && oldVisible[oi + 1] === newText) {
+                      // deletion of the current old visible line
+                      // skip pushing ol (effectively deleting it)
+                      oi++; // consumed the old
+                      // do not advance ni, as newText should match the next oldVisible
+                      i = i; // continue to next original line
+                      continue;
+                  } else if (ni + 1 < visible.length && oldText === visible[ni + 1]) {
+                      // insertion before current old visible
+                      newEditor.push({ text: newText, hidden: false, _collapseId: null });
+                      ni++; // consume inserted new
+                      // re-evaluate same ol in next iteration
+                      i = i; // no-op, explicit
+                      continue;
+                  } else {
+                      // replacement or modified line
+                      newEditor.push({ text: newText, hidden: false, _collapseId: ol?._collapseId || null });
+                      oi++; ni++;
+                  }
+              } else if (ni < visible.length) {
+                  // no more old visibles, but new visibles remain -> insertion
+                  newEditor.push({ text: visible[ni], hidden: false, _collapseId: null });
+                  ni++;
+              } else {
+                  // no new visible -> deletion of this old visible
+                  oi++;
+                  continue; // skip pushing
+              }
+          }
+
+          // Append remaining new visible lines (if any)
+          while (ni < visible.length) {
+              newEditor.push({ text: visible[ni], hidden: false, _collapseId: null });
+              ni++;
+          }
+
+          // Detect deletion of comment headers: compare old vs new comment-line sets
+          const oldCommentLines = oldVisible.filter(v => v.trim().startsWith('//')).map(v => v.trim());
+          const newCommentLines = visible.filter(v => v.trim().startsWith('//')).map(v => v.trim());
+
+          const deletedComments = oldCommentLines.filter(c => !newCommentLines.includes(c));
+
+          // For each deleted comment, check whether it was a block header with a collapsed block
+          const illegal = [];
+          for (let dc of deletedComments) {
+              // find index in oldLines
+              let idx = -1;
+              for (let i = 0; i < oldLines.length; i++) {
+                  if (oldLines[i].text.trim() === dc) { idx = i; break; }
+              }
+              if (idx === -1) continue;
+
+              // determine whether this header had code following it
+              let j = idx + 1;
+              let codeCount = 0;
+              while (j < oldLines.length && !oldLines[j].text.trim().startsWith('//')) {
+                  if (oldLines[j].text.trim() !== '') codeCount++;
+                  j++;
+              }
+
+              // Only illegal if the block existed AND the block was currently collapsed (i.e., the first following line is hidden)
+              const firstFollowingHidden = (oldLines[idx+1] && oldLines[idx+1].hidden === true);
+              if (codeCount > 0 && firstFollowingHidden) {
+                  illegal.push({ index: idx, header: dc, count: codeCount });
+              }
+          }
+
+          editorLines = newEditor;
+
+          if (illegal.length > 0) {
+              // Revert to previous state via undo and show modal with count
+              doUndo();
+              showBlockDeleteModal(illegal[0]);
+              return;
+          }
+
+          cleanupCollapsedBlocks();
+
+          // Sicherstellen, dass textarea den sichtbaren Text widerspiegelt
+          const newText = editorLines.filter(l => !l.hidden).map(l => l.text).join("\n");
+          if (codeEditor.value !== newText) {
+              renderEditor();
+          }
 
 // ✅ Cursor IMMER sauber setzen
          const max = codeEditor.value.length;
@@ -374,11 +692,37 @@ function initEditor(){
     codeEditor.addEventListener("click", highlightObjectFromCursor);
     codeEditor.addEventListener("keyup", highlightObjectFromCursor);
     codeEditor.addEventListener("select", highlightObjectFromCursor);
+    // Ctrl+Z undo
+    codeEditor.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+            e.preventDefault();
+            doUndo();
+        }
+    });
     renderEditor();
     syncScroll();
     checkErrors();
     syncLineNumbers();
     renderBackground();
+
+    // Autosave restore prompt
+    try {
+        const saved = localStorage.getItem(AUTOSAVE_KEY);
+        if (saved) {
+            const restore = confirm('Gespeicherter Entwurf gefunden. Wiederherstellen?');
+            if (restore) {
+                try {
+                    editorLines = JSON.parse(saved);
+                    renderEditor();
+                    checkErrors();
+                    syncLineNumbers();
+                    renderBackground();
+                } catch (e) {}
+            }
+        }
+    } catch (e) {}
+
+    startAutoSave();
 
 }
 //---------------------------------------
@@ -924,18 +1268,28 @@ function syncLineNumbers() {
 
         row.style.background = activeColor || "transparent";
 
-        // Collapse Button
+        // Collapse Button: nur anzeigen, wenn der Kommentar ein echten Block-Header ist
         if (isComment) {
-            const btn = document.createElement("span");
-            btn.className = "collapseBtn";
-            btn.textContent = collapsed[id] ? "▶" : "▼";
+            // Prüfen, ob nach dieser Kommentarzeile mindestens eine nicht-leere, nicht-kommentierte Zeile folgt
+            let hasBlock = false;
+            for (let k = i + 1; k < editorLines.length; k++) {
+                const t = editorLines[k].text.trim();
+                if (t.startsWith("//")) break;
+                if (t !== "") { hasBlock = true; break; }
+            }
 
-            btn.onclick = (e) => {
-                e.stopPropagation();
-                toggleCollapse(realIndex);
-            };
+            if (hasBlock) {
+                const btn = document.createElement("span");
+                btn.className = "collapseBtn";
+                btn.textContent = collapsed[id] ? "▶" : "▼";
 
-            row.appendChild(btn);
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    toggleCollapse(realIndex);
+                };
+
+                row.appendChild(btn);
+            }
         }
 
         // Zeilennummer
@@ -1029,6 +1383,7 @@ function syncScroll(){
 
 
 function toggleCollapse(commentIndex){
+    try { pushUndo(); } catch(e){}
     const scrollRatio =
         codeEditor.scrollTop /
         (codeEditor.scrollHeight - codeEditor.clientHeight || 1);
@@ -1451,23 +1806,32 @@ function initUMLTooltips() {
 
     if (!uml || !tooltip) return;
 
-    uml.addEventListener("mousemove", (e) => {
+    // Unified pointer handler: works for mousemove, click and touchstart
+    const handlePointer = (ev) => {
+        // Determine event target and coordinates (support Touch)
+        let target = ev.target;
+        let clientX = ev.clientX;
+        let clientY = ev.clientY;
 
-         // ✅ ALLE alten Highlights entfernen (inkl. Klassen!)
+        if (ev.touches && ev.touches.length > 0) {
+            target = ev.touches[0].target || target;
+            clientX = ev.touches[0].clientX;
+            clientY = ev.touches[0].clientY;
+        }
+
+        // ✅ ALLE alten Highlights entfernen (inkl. Klassen!)
         uml.querySelectorAll(".uml-class .uml-line, .uml-class .class-name")
             .forEach(el => {
                 el.classList.remove("uml-hover-line");
                 el.classList.remove("uml-class-hover");
             });
 
+        // =========================
+        // ✅ KLASSENNAMEN
+        // =========================
+        const classNameEl = target.closest(".uml-class .class-name");
 
-// =========================
-// ✅ KLASSENNAMEN
-// =========================
-
-        const classNameEl = e.target.closest(".uml-class .class-name");
-
-        if (!e.target.closest(".uml-class")) {
+        if (!target.closest(".uml-class")) {
             tooltip.style.display = "none";
             return;
         }
@@ -1493,25 +1857,24 @@ function initUMLTooltips() {
             return;
         }
 
-
         // =========================
         // ✅ ATTRIBUTE / METHODEN
         // =========================
-        const target = e.target.closest(".uml-class .class-attributes, .uml-class .class-methods");
-        if (!target) {
+        const targetBlock = target.closest(".uml-class .class-attributes, .uml-class .class-methods");
+        if (!targetBlock) {
             tooltip.style.display = "none";
             return;
         }
 
-        const lines = target.querySelectorAll(".uml-line");
+        const lines = targetBlock.querySelectorAll(".uml-line");
 
         if (lines.length === 0) {
             tooltip.style.display = "none";
             return;
         }
 
-        const rect = target.getBoundingClientRect();
-        const y = e.clientY - rect.top;
+        const rect = targetBlock.getBoundingClientRect();
+        const y = clientY - rect.top;
 
         const lineHeight = rect.height / lines.length;
         const index = Math.floor(y / lineHeight);
@@ -1541,13 +1904,16 @@ function initUMLTooltips() {
         tooltip.innerText = tooltips[name];
         tooltip.style.display = "block";
 
-        const box = target.closest(".uml-class").getBoundingClientRect();
+        const box = targetBlock.closest(".uml-class").getBoundingClientRect();
 
         tooltip.style.maxWidth = box.width + "px";
         tooltip.style.left = box.left + "px";
         tooltip.style.top = (box.top - tooltip.offsetHeight - 6) + "px";
+    };
 
-    });
+    uml.addEventListener("mousemove", handlePointer);
+    uml.addEventListener("click", handlePointer);
+    uml.addEventListener("touchstart", (e) => { handlePointer(e); }, { passive: true });
 
     uml.addEventListener("mouseleave", () => {
 
@@ -1933,6 +2299,15 @@ window.addEventListener("DOMContentLoaded", () => {
     initUMLClicks();
     initUMLTooltips();
 
+    // Gruppe-Karte in die Klassenliste verschieben, damit sie links von Rechteck erscheint
+    try{
+        const groupCard = document.getElementById('gruppe-card');
+        const umlClasses = document.getElementById('uml-classes');
+        if(groupCard && umlClasses && !umlClasses.contains(groupCard)){
+            umlClasses.insertBefore(groupCard, umlClasses.firstChild);
+        }
+    } catch(e){ /* ignore */ }
+
     const canvas = document.getElementById("mainCanvas"); // ✅ FIX
     const ctx = canvas.getContext("2d");
 
@@ -1960,6 +2335,282 @@ window.addEventListener("DOMContentLoaded", () => {
 
     }, 4000);
 
+    // Panel-Mode initialisieren (open / closed / dynamic)
+    try {
+        initPanelToggle();
+    } catch (e) {
+        console.warn("Panel-Toggle Init fehlgeschlagen:", e);
+    }
+
 });
+
+
+/* =========================
+   Bottom-Panel Mode (open / closed / dynamic)
+   - Button cycles through three states
+   - state persisted in localStorage as 'bottomPanelMode'
+========================= */
+function setPanelMode(mode){
+
+    const overlay = document.getElementById("uml-overlay");
+    const btn = document.getElementById("panelModeBtn");
+    if(!overlay || !btn) return;
+
+    overlay.classList.remove("mode-open", "mode-closed", "mode-dynamic");
+    // Entferne alle mode-classes und setze neue
+    overlay.classList.remove("mode-open", "mode-closed", "mode-dynamic", "mode-hidden");
+
+    if(mode === "open"){
+        overlay.classList.add("mode-open");
+        // Einfache Darstellung: einzelner Pfeil nach oben
+        btn.innerHTML = `<span class="arrow up">▲</span>`;
+        btn.title = "Panel-Modus: Immer ausgeklappt";
+        btn.className = "panelToggleBtn open";
+    }
+    else if(mode === "closed"){
+        overlay.classList.add("mode-closed");
+        // Im eingeklappten Zustand: einzelner Pfeil nach unten
+        btn.innerHTML = `<span class="arrow down">▼</span>`;
+        btn.title = "Panel-Modus: Immer eingeklappt (Attribute sichtbar)";
+        btn.className = "panelToggleBtn closed";
+    }
+    else if(mode === "hidden"){
+        overlay.classList.add("mode-hidden");
+        // Doppelter, übereinander gelegter Pfeil nach unten
+        btn.innerHTML = `<span class="arrow-stack"><span>▼</span><span>▼</span></span>`;
+        btn.title = "Panel-Modus: Klassen komplett ausblenden";
+        btn.className = "panelToggleBtn hidden";
+    }
+    else {
+        overlay.classList.add("mode-dynamic");
+        // Dynamisch: oberer und unterer Pfeil übereinander (gleiche Optik wie verwendet)
+        btn.innerHTML = `<span class="arrow-stack"><span>▲</span><span>▼</span></span>`;
+        btn.title = "Panel-Modus: Dynamisch (hover öffnet)";
+        btn.className = "panelToggleBtn dynamic";
+    }
+
+    try { localStorage.setItem('bottomPanelMode', mode); } catch(e){}
+}
+
+function cyclePanelMode(){
+    const current = localStorage.getItem('bottomPanelMode') || 'dynamic';
+    let next;
+    if(current === 'dynamic') next = 'open';
+    else if(current === 'open') next = 'closed';
+    else if(current === 'closed') next = 'hidden';
+    else if(current === 'hidden') next = 'dynamic';
+    else next = 'dynamic';
+    setPanelMode(next);
+}
+
+function initPanelToggle(){
+
+    const btn = document.getElementById('panelModeBtn');
+    const overlay = document.getElementById('uml-overlay');
+    if(!btn || !overlay) return;
+
+    // Button bleibt jetzt permanent sichtbar; Positionierung per CSS (fixed)
+
+    // Sicherstellen, dass overlay nicht durch CSS :hover allein geöffnet bleibt
+    // default state
+    const saved = localStorage.getItem('bottomPanelMode') || 'dynamic';
+    setPanelMode(saved);
+
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        cyclePanelMode();
+    });
+
+    // Touch support: tap the button or the overlay to open the panel in dynamic mode.
+    btn.addEventListener('touchstart', (e) => {
+        const mode = localStorage.getItem('bottomPanelMode') || 'dynamic';
+        if (mode === 'dynamic') {
+            overlay.classList.add('hover-open');
+            if (hoverTimeout) { clearTimeout(hoverTimeout); hoverTimeout = null; }
+        }
+        // allow click to still fire
+    }, { passive: true });
+
+    overlay.addEventListener('touchstart', (e) => {
+        const mode = localStorage.getItem('bottomPanelMode') || 'dynamic';
+        if (mode === 'dynamic') {
+            overlay.classList.add('hover-open');
+            if (hoverTimeout) { clearTimeout(hoverTimeout); hoverTimeout = null; }
+        }
+    }, { passive: true });
+
+    // Close overlay when touching outside (touch devices)
+    document.addEventListener('touchstart', (e) => {
+        const mode = localStorage.getItem('bottomPanelMode') || 'dynamic';
+        if (mode !== 'dynamic') return;
+        if (!overlay.classList.contains('hover-open')) return;
+        const tgt = e.target;
+        if (!overlay.contains(tgt) && tgt !== btn && !btn.contains(tgt)) {
+            overlay.classList.remove('hover-open');
+        }
+    }, { passive: true });
+
+    // Verbesserte Hover-Logik für dynamischen Modus:
+    // Ziel: Panel bleibt offen, wenn man zur Schaltfläche fährt und schließt nicht sofort,
+    // damit der Button zuverlässig anklickbar ist.
+
+    let hoverTimeout = null;
+
+    function clearHoverTimeout(){ if(hoverTimeout){ clearTimeout(hoverTimeout); hoverTimeout = null; } }
+
+    overlay.addEventListener('mouseenter', () => {
+        const mode = localStorage.getItem('bottomPanelMode') || 'dynamic';
+        if (mode === 'dynamic') {
+            overlay.classList.add('hover-open');
+            clearHoverTimeout();
+        }
+    });
+
+    overlay.addEventListener('mouseleave', () => {
+        const mode = localStorage.getItem('bottomPanelMode') || 'dynamic';
+        if (mode === 'dynamic') {
+            // kleine Verzögerung bevor wir zu- und nicht sofort schließen
+            clearHoverTimeout();
+            hoverTimeout = setTimeout(() => {
+                overlay.classList.remove('hover-open');
+                hoverTimeout = null;
+            }, 220);
+        }
+    });
+
+    // Stelle sicher, dass Button die Hover-Open-Phase verlängert
+    btn.addEventListener('mouseenter', () => {
+        const mode = localStorage.getItem('bottomPanelMode') || 'dynamic';
+        if (mode === 'dynamic') {
+            overlay.classList.add('hover-open');
+            clearHoverTimeout();
+        }
+    });
+
+    btn.addEventListener('mouseleave', () => {
+        const mode = localStorage.getItem('bottomPanelMode') || 'dynamic';
+        if (mode === 'dynamic') {
+            clearHoverTimeout();
+            hoverTimeout = setTimeout(() => {
+                overlay.classList.remove('hover-open');
+                hoverTimeout = null;
+            }, 220);
+        }
+    });
+
+    // no dynamic repositioning — CSS keeps the button visible and fixed
+
+    // Wenn offen/geschlossen, stelle sicher, dass Hover nicht überschreibt (CSS classes use !important)
+}
+
+// Modal handling for block deletion
+let _pendingIllegal = null;
+function showBlockDeleteModal(info){
+    _pendingIllegal = info;
+    const modal = document.getElementById('blockDeleteModal');
+    const msg = document.getElementById('blockDeleteMsg');
+    if(!modal || !msg) return;
+    const countText = info.count ? `\nAchtung: Beim Löschen werden ${info.count} Codezeile(n) entfernt.` : '';
+    msg.innerText = `Blöcke solltest du vorsichtshalber nur dann löschen, wenn du sie vorher ausgeklappt hast.\n` +
+        `Betroffener Block: ${info.header.trim()}.` + countText;
+
+    // Update delete button label to show count
+    const delBtn = document.getElementById('btnDeleteAnyway');
+    if (delBtn) {
+        delBtn.textContent = info.count ? `Löschen (${info.count} Zeilen)` : 'Löschen';
+    }
+
+    modal.style.display = 'block';
+}
+
+function hideBlockDeleteModal(){
+    const modal = document.getElementById('blockDeleteModal');
+    if(modal) modal.style.display = 'none';
+    _pendingIllegal = null;
+}
+
+function expandPendingBlock(){
+    if(!_pendingIllegal) return;
+    // find the header in editorLines
+    const h = _pendingIllegal.header;
+    let idx = -1;
+    for(let i=0;i<editorLines.length;i++){
+        if(editorLines[i].text === h){ idx = i; break; }
+    }
+    if(idx === -1) { hideBlockDeleteModal(); return; }
+    // unhide header + following until next header
+    for(let j=idx;j<editorLines.length;j++){
+        editorLines[j].hidden = false;
+        if(j>idx && editorLines[j].text.trim().startsWith('//')) break;
+    }
+    hideBlockDeleteModal();
+    renderEditor(); checkErrors(); syncLineNumbers(); renderBackground();
+}
+
+function expandAllBlocks(){
+    for(let i=0;i<editorLines.length;i++) editorLines[i].hidden = false;
+    hideBlockDeleteModal();
+    renderEditor(); checkErrors(); syncLineNumbers(); renderBackground();
+}
+
+function deleteAnywayPending(){
+    if(!_pendingIllegal) return;
+    try { pushUndo(); } catch(e){}
+    const h = _pendingIllegal.header;
+    let idx = -1;
+    for(let i=0;i<editorLines.length;i++){
+        if(editorLines[i].text === h){ idx = i; break; }
+    }
+    if(idx === -1) { hideBlockDeleteModal(); return; }
+    // gather block lines
+    const removed = [];
+    let j = idx;
+    removed.push(editorLines[j]);
+    j++;
+    while(j<editorLines.length && !editorLines[j].text.trim().startsWith('//')){ removed.push(editorLines[j]); j++; }
+    // remove them
+    editorLines.splice(idx, removed.length);
+    recordDeletedBlock(idx, removed.map(l => ({...l}))); // save copy
+    hideBlockDeleteModal();
+    renderEditor(); checkErrors(); syncLineNumbers(); renderBackground();
+}
+
+// attach modal buttons after DOM loaded
+window.addEventListener('DOMContentLoaded', () => {
+    const b1 = document.getElementById('btnExpandBlock');
+    const b2 = document.getElementById('btnExpandAll');
+    const b3 = document.getElementById('btnDeleteAnyway');
+    const b4 = document.getElementById('btnCancelDelete');
+    if(b1) b1.addEventListener('click', expandPendingBlock);
+    if(b2) b2.addEventListener('click', expandAllBlocks);
+    if(b3) b3.addEventListener('click', deleteAnywayPending);
+    if(b4) b4.addEventListener('click', hideBlockDeleteModal);
+    // restore modal buttons
+    const rDel = document.getElementById('btnDeleteAll');
+    const rCancel = document.getElementById('btnCancelRestore');
+    const rRestoreSelected = document.getElementById('btnRestoreSelected');
+    if(rDel) rDel.addEventListener('click', () => {
+        try { pushUndo(); } catch(e){}
+        // record full content as deleted block
+        recordDeletedBlock(0, editorLines.map(l=>({...l})));
+        editorLines = [];
+        renderEditor(); checkErrors(); syncLineNumbers(); renderBackground();
+        hideRestoreModal();
+    });
+    if(rCancel) rCancel.addEventListener('click', () => { hideRestoreModal(); });
+    if(rRestoreSelected) rRestoreSelected.addEventListener('click', restoreSelectedFromModal);
+    // enable/disable restore-selected depending on checkboxes inside the list
+    const restoreList = document.getElementById('restoreList');
+    if (restoreList) {
+        restoreList.addEventListener('change', () => {
+            const any = restoreList.querySelectorAll('input[type=checkbox]:checked').length > 0;
+            const btn = document.getElementById('btnRestoreSelected');
+            if (btn) btn.disabled = !any;
+        });
+    }
+    // position update on load & resize is not needed — button is positioned via CSS (fixed at left)
+});
+
+// Button-Position wird jetzt ausschließlich per CSS gesteuert (fixed - links)
 
 
