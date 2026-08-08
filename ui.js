@@ -36,8 +36,8 @@ let editorLines = [
     {text: "k1.rotieren(360);", hidden: false},
     {text: "r1.farbe = \"gelb\";", hidden: false},
     {text: "k1.farbe = \"rot\";", hidden: false},
-    {text: "r1.wandern(300,0);", hidden: false},
-    {text: "k1.wandern(-300,0);", hidden: false},
+    {text: "r1.wandern(-300,0);", hidden: false},
+    {text: "k1.wandern(300,0);", hidden: false},
     {text: "", hidden: false},
     {text: "h.einblenden();", hidden: false},
     {text: "h.inDenHintergrund();", hidden: false},
@@ -51,6 +51,11 @@ let collapsed = {};
 let lineErrors = {};
 let codeEditor = null; // wird im init gesetzt
 let ignoreInput = false;
+let lastCursorPos = 0; // Letzte Cursorposition für Objektkarte
+
+// Global verfügbar machen für canvas.js
+window.codeEditor = null;
+window.lastCursorPos = 0;
 // Undo / Autosave
 let undoStack = [];
 const UNDO_MAX = 20;
@@ -280,6 +285,16 @@ const knownProps = [
     "winkel","rotSpeed","pivotX","pivotY"
 ];
 
+// ✅ Klassen-spezifische Attribute
+const classAttributes = {
+    "Rechteck": ["x", "y", "breite", "hoehe", "farbe", "visible", "z", "ebene", "winkel", "pivotX", "pivotY"],
+    "Kreis": ["x", "xM", "y", "yM", "radius", "farbe", "visible", "z", "ebene", "winkel", "pivotX", "pivotY"],
+    "Ellipse": ["x", "y", "breite", "hoehe", "farbe", "visible", "z", "ebene", "winkel", "pivotX", "pivotY"],
+    "Dreieck": ["x", "y", "breite", "hoehe", "farbe", "visible", "z", "ebene", "winkel", "pivotX", "pivotY"],
+    "Linie": ["x", "y", "xA", "yA", "xE", "yE", "laenge", "winkel", "farbe", "dicke", "visible", "z", "ebene", "pivotX", "pivotY"],
+    "Gruppe": ["vx", "vy_move", "gravity"]
+};
+
 // ✅ Ähnlichkeitsprüfung (Vorschläge)
 function getSuggestion(word, list) {
 
@@ -320,7 +335,7 @@ function getSuggestion(word, list) {
     return best;
 }
 
-const knownMethods = [
+const allMethods = [
     "drehen",
     "DrehpunktSetzen",
     "wandern",
@@ -328,7 +343,7 @@ const knownMethods = [
     "rotieren",
     "RotationBeenden",
     "fallen",
-    "FallenBeenden",
+    "FallBeenden",
     "huepfen",
     "huepfenBeenden",
     "nachVorne",
@@ -513,7 +528,22 @@ const colorMap = {
 function initEditor(){
 
     codeEditor = document.getElementById("codeEditor");
+    window.codeEditor = codeEditor; // Global verfügbar machen
     if (!codeEditor) return;
+
+    // Cursor-Position verfolgen für Objektkarten-Funktion
+    codeEditor.addEventListener("mouseup", () => {
+        lastCursorPos = codeEditor.selectionStart;
+        window.lastCursorPos = lastCursorPos;
+    });
+    codeEditor.addEventListener("keyup", () => {
+        lastCursorPos = codeEditor.selectionStart;
+        window.lastCursorPos = lastCursorPos;
+    });
+    codeEditor.addEventListener("click", () => {
+        lastCursorPos = codeEditor.selectionStart;
+        window.lastCursorPos = lastCursorPos;
+    });
 
      codeEditor.addEventListener("input", () => {
 
@@ -902,6 +932,16 @@ function checkErrors(){
     // ❌ nicht global!
 // ✅ pro Zeile berechnen
 
+    // ✅ Hilfsfunktion: Objekttyp ermitteln
+    function getObjectType(objName, upToLine) {
+        for (let j = 0; j < upToLine; j++) {
+            const l = editorLines[j].text.trim();
+            const match = l.match(new RegExp(`^${objName}\\s*=\\s*new\\s+([A-Za-z_]\\w*)\\s*\\(`));
+            if (match) return match[1];
+        }
+        return null;
+    }
+
     for(let i = 0; i < editorLines.length; i++){
         const groupMembership = collectGroupsUntilLine(i);
         const raw = editorLines[i].text;
@@ -933,11 +973,27 @@ function checkErrors(){
             continue;
         }
 
+        // ❌ Leerzeichen vor oder nach Punkt in Punktnotation
+        if (/[A-Za-z0-9_]\s+\.\s*[A-Za-z0-9_]|[A-Za-z0-9_]\s*\.\s+[A-Za-z0-9_]/.test(line)) {
+            lineErrors[i] = "Leerzeichen vor oder nach '.' entfernen";
+            continue;
+        }
+
 
         // 1. Strichpunkt
         if(!line.endsWith(";")){
             lineErrors[i] = "Strichpunkt fehlt";
             continue;
+        }
+
+        // ❌ Nur eine Anweisung pro Zeile erlaubt
+        const firstSemi = line.indexOf(";");
+        if (firstSemi !== -1 && firstSemi !== line.length - 1) {
+            const after = line.substring(firstSemi + 1).trim();
+            if (after.length > 0) {
+                lineErrors[i] = "Nur eine Anweisung pro Zeile erlaubt";
+                continue;
+            }
         }
 
         // ✅ 2. GLOBALE METHODEN (ohne Objekt)
@@ -969,7 +1025,33 @@ function checkErrors(){
             const varName = line.split("=")[0].trim();
 
             if (knownProps.includes(varName)) {
-                lineErrors[i] = `Attribut '${varName}' braucht ein Objekt (z.B. r1.${varName} = ...)`;
+                // Nur melden, wenn es KEIN Konstruktor ist (dafür gibt es eigene Prüfung)
+                if (!line.includes("new ")) {
+                    lineErrors[i] = `Attribut '${varName}' braucht ein Objekt (z.B. r1.${varName} = ...)`;
+                    continue;
+                }
+            }
+        }
+
+        // ❌ Konstruktor-Checks: Klammern erforderlich & Typ beginnt mit Großbuchstaben
+        const ctorSimple = line.match(/^\s*([A-Za-z_]\w*)\s*=\s*new\s+([A-Za-z_]\w*)/);
+        if (ctorSimple) {
+            const varName = ctorSimple[1];
+            const typeName = ctorSimple[2];
+
+            // Prüfen, ob der gewünschte Objektname eigentlich ein Attribut ist
+            if (knownProps.includes(varName)) {
+                lineErrors[i] = `'${varName}' ist ein Attributname. Verwende für den Konstruktor einen Objektnamen.`;
+                continue;
+            }
+
+            const ctorFull = line.match(/^\s*([A-Za-z_]\w*)\s*=\s*new\s+([A-Za-z_]\w*)\s*\([^)]*\)\s*;$/);
+            if (!ctorFull) {
+                lineErrors[i] = "Konstruktor benötigt Klammern, z.B. r1 = new Rechteck();";
+                continue;
+            }
+            if (typeName[0] !== typeName[0].toUpperCase()) {
+                lineErrors[i] = "Konstruktorname muss mit einem Großbuchstaben beginnen";
                 continue;
             }
         }
@@ -1171,9 +1253,18 @@ function checkErrors(){
             continue;
         }
 
-            // ❌ unbekanntes Attribut
+            // ❌ unbekanntes Attribut oder Attribut nicht für diese Klasse
+            const objType = getObjectType(varName, i);
+            
+            // Prüfe zuerst, ob das Attribut überhaupt existiert
             if (!knownProps.includes(attrName)) {
                 lineErrors[i] = `Attribut '${attrName}' existiert nicht`;
+                continue;
+            }
+            
+            // Prüfe dann, ob das Attribut für diese Klasse gültig ist
+            if (objType && classAttributes[objType] && !classAttributes[objType].includes(attrName)) {
+                lineErrors[i] = `Attribut '${attrName}' existiert nicht für Klasse '${objType}'`;
                 continue;
             }
 
@@ -1208,8 +1299,44 @@ function checkErrors(){
 
 
 
-        else {
-            // Other forms: assignment without dot — optional checks could be added
+        // ❌ Zuweisung ohne Punkt (z.B. r1x = 200; oder x = 200;)
+        const simpleAssignMatch = line.match(/^([A-Za-z_]\w*)\s*=\s*(.+);$/);
+        if (simpleAssignMatch) {
+            const varName = simpleAssignMatch[1];
+            const value = simpleAssignMatch[2].trim();
+
+            // Ist es ein bekanntes Attribut ohne Objekt? (z.B. "x = 200;")
+            if (knownProps.includes(varName)) {
+                lineErrors[i] = `Attribut '${varName}' braucht ein Objekt (z.B. r1.${varName} = ...)`;
+                continue;
+            }
+
+            // Ist es ein undefiniertes Objekt? (z.B. "r1x = 200;" oder "xyz = 100;")
+            if (!declared.has(varName)) {
+                // Prüfe, ob es eventuell ein Objekt mit Attribut war (z.B. "r1x" statt "r1.x")
+                const possibleObj = varName.substring(0, varName.length - 1);
+                const possibleAttr = varName.substring(varName.length - 1);
+                
+                if (declared.has(possibleObj) && knownProps.includes(possibleAttr)) {
+                    lineErrors[i] = `Punkt vergessen? Meintest du '${possibleObj}.${possibleAttr} = ${value}'?`;
+                } else {
+                    const suggestion = getSuggestion(varName, Array.from(declared));
+                    if (suggestion) {
+                        lineErrors[i] = `Objekt '${varName}' existiert nicht. Meintest du '${suggestion}'?`;
+                    } else {
+                        lineErrors[i] = `Objekt '${varName}' existiert nicht`;
+                    }
+                }
+                continue;
+            }
+
+            // Objekt existiert, aber ist es in einer Gruppe?
+            if (groupMembership[varName] !== undefined) {
+                lineErrors[i] = `Objekt '${varName}' gehört zu Gruppe '${groupMembership[varName]}'`;
+                continue;
+            }
+
+            continue;
         }
     }
 }
@@ -1551,7 +1678,32 @@ function executeCode(){
         .map(line => line.text)   // ✅ ALLE Zeilen
         .join("\n");
 
+    // Referenzwerte auf die aktuellen Werte nach Code-Ausführung setzen
+    // => Nach dem Ausführen sind alle Objekte im Zustand aus dem Editor
+    // => Wenn der Benutzer sie dann manuell verschiebt, werden die Änderungen blau markiert
+    // => Beim nächsten Ausführen verschwinden die blauen Markierungen wieder
+    selectedObject = null;
+    selectedGroup = null;
+    originalObjectAttrs = null; // Zurücksetzen
+    window.editorObjectReferences = null; // Alte Referenzen zurücksetzen
+
     startAnimation();
+    
+    // Nach kurzer Verzögerung die Referenzwerte für ALLER Objekte speichern
+    setTimeout(() => {
+        if (objects) {
+            // Erstelle ein Mapping: Objektname -> Referenzwerte
+            const refs = {};
+            for (let name in objects) {
+                const obj = objects[name];
+                if (obj && obj.name) {
+                    refs[obj.name] = { ...obj };
+                }
+            }
+            // Speichere in einer globalen Variable
+            window.editorObjectReferences = refs;
+        }
+    }, 100);
 }
 
 
@@ -1769,7 +1921,7 @@ function initUMLClicks() {
 
 
         // ✅ Methode
-        else if (knownMethods.includes(word)) {
+        else if (allMethods.includes(word)) {
             insert = `${word}();`;
         }
 
@@ -1778,7 +1930,6 @@ function initUMLClicks() {
         else if (knownProps.includes(word)) {
             insert = `${word} = `;
         }
-
         if (!insert) return;
 
         // ✅ Einfügen im Editor
@@ -1960,7 +2111,6 @@ l1 = new Linie();
 
 Geht auch per Klick auf die Überschriften der Klassenkarten (nur noch Objektname selbst ergänzen).
 
-
 =====================================
 3. POSITION & GROESSE
 =====================================
@@ -1970,7 +2120,7 @@ y = Abstand von oben (Pixel)
 Beispiel:
 r1.x = 200;
 r1.y = 100;
-
+Du kannst die Objekte auch durch Ziehen in die richtige Position bringen und die Attributwerte durch Klicken in der Objektkarte übernehmen.
 Die Bedeutung aller Attribute und Methoden findest du in den Klassenkarten (gehe mit der Maus über die Klassenkarten).
 
 =====================================
@@ -1978,10 +2128,10 @@ Die Bedeutung aller Attribute und Methoden findest du in den Klassenkarten (gehe
 =====================================
 Beispiel:
 r1.farbe = "rot";
+r.farbe = "#8010680";
 
 Farben kannst du auch unten anklicken.
 → Wird automatisch eingefügt
-
 
 =====================================
 5. BEWEGUNG
@@ -1998,7 +2148,7 @@ r1.wandern(-50, 0);
 =====================================
 6. ROTATION
 =====================================
-drehen(Winkel) → einmal drehen
+drehen(Winkel) → einmal beim Zeichnen drehen
 rotieren(v) → dauerhaft drehen um den eigenen Mittelpunkt.
 Braucht man einen bestimmten Drehpunkt: verwende DrehpunktSetzen(x,y) vor der Rotation.
 
@@ -2026,13 +2176,14 @@ g = new Gruppe(r1, k1);
 g.wandern(50, 0);
 warte(500);
 g.entfernen(k1);
+g.r1.farbe = „blau“;
 
 =====================================
 9. PROGRAMM STARTEN
 =====================================
-Ausführen startet die Animation
+Ausführen startet die Animation.
 
-Pause/Weiter stoppt und startet die Animation
+Pause/Weiter stoppt und startet die Animation.
 Zu Testzwecken kann auch ein Programmteil markiert werden und mit "Markierung" separat ausgeführt werden.
 
 Oben kann das Programm auch im Vollbildmodus gestartet werden. Mit ESC Taste wieder beenden.
@@ -2041,12 +2192,12 @@ Oben kann das Programm auch im Vollbildmodus gestartet werden. Mit ESC Taste wie
 10. SPEICHERN
 =====================================
 💾 Speichern unter…
-→ Datei sichern
+→ nur der Editortext wird in einer Textdatei gespeichert
 
 Tipp:
 Chrome, Edge = Ordner frei wählen
 Firefox = nur im Download-Verzeichnis
-
+Der Editortext kann aber einfach nur rauskopiert werden.
 
 =====================================
 TYPISCHE FEHLER
@@ -2054,7 +2205,7 @@ TYPISCHE FEHLER
 • Strichpunkt vergessen (;)
 • Objekt nicht erzeugt
 • Tippfehler im Namen
-→ Roter Pfeil zeigt Fehler
+→ Roter Pfeil zeigt Fehler an
 
 __________________________________________________
 Zeichen-Editor für Punktnotation (6. Jahrgangsstufe BY)
@@ -2152,6 +2303,7 @@ function highlightObjectFromCursor() {
     if (!name) {
         selectedObject = null;
         selectedGroup = null;
+        originalObjectAttrs = null;
 
         const card = document.getElementById("object-card");
         if (card) card.style.display = "none";
@@ -2166,6 +2318,7 @@ function highlightObjectFromCursor() {
         selectedObject = objects[name];
         selectedGroup = null;
 
+        saveOriginalObjectAttrs(selectedObject);
         updateObjectCard(selectedObject);
     }
 
@@ -2195,6 +2348,7 @@ function highlightObjectFromCursor() {
 
         selectedGroup = g;
         selectedObject = null;
+        originalObjectAttrs = null;
     }
 
 
@@ -2241,6 +2395,7 @@ function highlightObjectFromCursor() {
 
         selectedObject = null;
         selectedGroup = null;
+        originalObjectAttrs = null;
     }
 
 
@@ -2261,6 +2416,7 @@ function highlightObjectFromCursor() {
 
         selectedObject = null;
         selectedGroup = null;
+        originalObjectAttrs = null;
     }
 
     drawObjects();

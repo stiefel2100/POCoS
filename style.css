@@ -46,6 +46,10 @@ body {
     flex:1;
     height:40px;
     font-size:20px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:0;
 }
 
 /* Restore-Button: im Stil der anderen Menü-Buttons halten */
@@ -54,8 +58,7 @@ body {
     background: #e6e6e6;
     border: 1px solid #999;
     border-radius: 4px;
-    /* Platz für das grüne Plus am rechten unteren Rand reservieren */
-    padding: 0 28px 0 0;
+    padding: 0;
     margin: 0;
     color: inherit;
     cursor: pointer;
@@ -65,7 +68,6 @@ body {
     box-sizing: border-box;
     height: 40px;     /* explizit wie die anderen Buttons */
     font-size: 20px;  /* explizit wie die anderen Buttons */
-    position: relative; /* damit sich das Plus absolut im Button platzieren lässt */
 }
 .restore-btn svg {
     width: 1em;      /* passt zur font-size der Buttons (20px) */
@@ -77,20 +79,7 @@ body {
 /* zusätzliche hochspezifische Regel falls Browser-Defaults andere Stile erzwingen */
 #menuBar > button.restore-btn { background: #e6e6e6; border: 1px solid #999; }
 
-/* kleines grünes Plus beim Emoji-Button */
-.restore-plus {
-    color: #2e7d32; /* grün */
-    font-weight: 800;
-    font-size: 1.2em;
-    line-height: 1;
-    display: inline-block;
-    position: absolute;
-    right: 6px;    /* rechts unten positionieren */
-    bottom: 6px;
-    z-index: 1;    /* liegt hinter dem Papierkorb */
-    transform: translate(2px, 2px); /* leicht nach unten-rechts versetzen */
-}
-.restore-trash { display:inline-block; position: relative; z-index: 2; }
+.restore-trash { display:inline-block; }
 
 /* EDITOR: Wrapper / Line Numbers / Background / Textarea */
 #editorWrapper {
@@ -325,7 +314,7 @@ body {
    (damit er nur im rechten Panel sichtbar ist und nicht am gesamten Viewport klebt). */
 .panelToggleBtn {
     position: absolute; /* relativ zu #right */
-    left: 8px; /* links innerhalb des rechten Panels */
+    left: 2px; /* Abstand von Trennlinie: 2px */
     bottom: 12px; /* Abstand vom unteren Rand des rechten Panels */
     transform: none;
     top: auto;
@@ -587,6 +576,11 @@ body {
     flex-shrink: 0;
     display: none; /* standardmäßig versteckt */
     margin-left: 28px; /* näher an den linken Button herangerückt */
+
+
+    pointer-events: auto !important;
+    position: relative;
+    z-index: 99999;
 }
 
 /* Responsive: auf schmalen Viewports den Abstand verkleinern */
@@ -825,4 +819,45 @@ body {
 }
 #right.fullscreen-mode #canvasWrapper .logo-mask {
     display: none !important;
+}
+
+/* Geänderte Attributwerte in der Objektkarte */
+#object-card .uml-line.object-card-changed {
+    font-weight: bold !important;
+    color: blue !important;
+}
+
+/* Highlighting für Objektkarten-Zeilen beim Mouseover */
+#object-card .uml-line.object-card-hover {
+    background: rgba(255, 235, 100, 0.6);
+}
+
+/* Blauer Pfeil für geänderte Attribute (ähnlich wie errorArrow) */
+.changeArrow {
+    color: blue;
+    font-weight: 700;
+    font-size: 14px;
+    margin-left: 8px;
+    user-select: none;
+    cursor: help;
+    float: right;
+}
+
+/* Custom Tooltip für geänderte Attribute */
+.object-card-tooltip {
+    position: absolute;
+    background: rgba(200, 220, 255, 0.8); /* blass hellblau hinterlegt */
+    color: #000;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: Arial;
+    pointer-events: none;
+    z-index: 3000;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+    white-space: normal; /* Mehrzeiliger Text */
+    display: none;
+    max-width: 170px; /* Maximale Breite der Objektkarte */
+    word-wrap: break-word; /* Textumbruch */
+    pointer-events: none;
 }

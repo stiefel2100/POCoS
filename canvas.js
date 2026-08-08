@@ -16,6 +16,7 @@ let errors = [];
 let logicalWidth = 800;
 let logicalHeight = 600;
 let selectedObject = null;
+let originalObjectAttrs = null;
 let dragOffsetX = 0;
 let dragOffsetY = 0;
 let isDragging = false;
@@ -23,8 +24,10 @@ let dragObject = null;
 let dragMode = null;
 let groups = {};
 let selectedGroup = null;
-// "move" | "start" | "end"
+let rememberedSelectedObjectName = null;
+let objectCardObjectName = null;
 
+// "move" | "start" | "end"
 
 const methods = {
     //Bewegung
@@ -117,7 +120,6 @@ const methods = {
         }
     },
 
-
     FallenBeenden(obj){
         obj.gravity = 0;
         obj.vy = 0;
@@ -158,8 +160,6 @@ const methods = {
         obj.initialJump = 250;   // ✅ feste Startenergie
         obj.bounce = 0.9;
     },
-
-
 
     huepfenBeenden(obj){
         obj.gravity = 0;
@@ -296,11 +296,11 @@ const methods = {
         const grad = params[0] || 0;
 
         if(groups[obj.name]){
-            groups[obj.name]._winkel = -grad;
+            groups[obj.name]._winkel = grad;
             return;
         }
 
-        obj.winkel -= grad;
+        obj.winkel += grad;
     },
 
     DrehpunktSetzen(obj, params){
@@ -324,11 +324,9 @@ const methods = {
             groups[obj.name]._rotSpeed = speed;
             return;
         }
-        if (objects[obj.name]) {
-            objects[obj.name].rotSpeed = speed;
-            return;
-        }
+                    obj.rotSpeed = speed;
     },
+
     RotationBeenden(obj){
         if(groups[obj.name]){
             groups[obj.name]._rotSpeed = 0;
@@ -336,8 +334,6 @@ const methods = {
         obj.rotSpeed = 0;
     }
 };
-
-
 
 function addError(line, message){
     errors.push({
@@ -347,7 +343,6 @@ function addError(line, message){
 
     console.error("Zeile " + (line+1) + ": " + message);
 }
-
 
 window.addEventListener("DOMContentLoaded", function() {
 
@@ -361,8 +356,6 @@ window.addEventListener("DOMContentLoaded", function() {
     const top = document.getElementById("rulerTop");
     const left = document.getElementById("rulerLeft");
 
-
-// ✅ EINMALIG
     top.width = logicalWidth * dpr;
     top.height = 20 * dpr;
 
@@ -372,68 +365,53 @@ window.addEventListener("DOMContentLoaded", function() {
     logicalWidth = 800;
     logicalHeight = 600;
 
-// ✅ echte interne Größe setzen
     canvas.width = logicalWidth * dpr;
     canvas.height = logicalHeight * dpr;
 
-// ✅ sichtbare Größe
     canvas.style.width = logicalWidth + "px";
     canvas.style.height = logicalHeight + "px";
 
-// ✅ skalieren
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-
-
-// zuerst leeren
     ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);  // Reset Transform
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.restore();
 
-
-// dann Lineale zeichnen
     drawRulers();
     alignRulers();
     drawObjects();
 
-   // Objekte mit Maus ziehen
     canvas.addEventListener("mousedown", onMouseDown);
     canvas.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseleave", onMouseUp);
     window.addEventListener("mouseup", onMouseUp);
 
-// ✅ NEU: Klick im CanvasWrapper (aber NICHT auf Canvas)
     const wrapper = document.getElementById("canvasWrapper");
 
     if (wrapper) {
         wrapper.addEventListener("mousedown", function(e) {
 
-            // ✅ Wenn Klick direkt auf Canvas → NICHT hier
             if (e.target.closest("#mainCanvas")) return;
-
-            // ✅ alles andere im rechten Bereich → Auswahl aufheben
+            if (e.target.closest("#object-card")) return;
             selectedObject = null;
             selectedGroup = null;
+            originalObjectAttrs = null;
             dragObject = null;
             isDragging = false;
 
             drawObjects();
 
-    // ✅ Objektkarte verstecken
             const card = document.getElementById("object-card");
             if (card) {
                 card.style.display = "none";
+                objectCardObjectName = null;
             }
-            });
+        });
     }
 
 });
 
-
-// =========================
-// Hilfsfunktion
-// =========================
 function isOutside(obj){
 
     const w = logicalWidth;
@@ -448,7 +426,7 @@ function isOutside(obj){
 
 function getLineEndpoints(obj) {
 
-    const rad = obj.winkel * Math.PI / 180;
+    const rad = -obj.winkel * Math.PI / 180;
 
     const dx = Math.cos(rad) * obj.laenge / 2;
     const dy = Math.sin(rad) * obj.laenge / 2;
@@ -466,24 +444,18 @@ function updateGruppeCardVisibility() {
     const card = document.getElementById("gruppe-card");
     if (!card) return;
 
-    // ✅ gibt es mindestens eine Gruppe?
     const hasGroup = Object.keys(groups).length > 0;
 
     card.style.display = hasGroup ? "block" : "none";
 }
-//------------------------
-// Objekt auswählen
-//_------------------------
 function getObjectAt(x, y){
 
     const list = Object.values(objects)
-        .sort((a, b) => (b.z || 0) - (a.z || 0)); // vorne zuerst
+        .sort((a, b) => (b.z || 0) - (a.z || 0));
 
     for(let obj of list) {
 
         if (obj.type === "Rechteck" || obj.type === "Ellipse") {
-
-
 
             const left = obj.x - obj.breite/2;
             const top  = obj.y - obj.hoehe/2;
@@ -504,7 +476,6 @@ function getObjectAt(x, y){
             }
         }
 
-
         else if (obj.type === "Dreieck") {
 
             const b = obj.breite;
@@ -524,6 +495,11 @@ function getObjectAt(x, y){
 
         else if (obj.type === "Linie") {
 
+            const ep = getLineEndpoints(obj);
+            if (Math.hypot(x - ep.xA, y - ep.yA) < 12 || Math.hypot(x - ep.xE, y - ep.yE) < 12) {
+                return obj;
+            }
+
             const rad = -obj.winkel * Math.PI / 180;
             const cos = Math.cos(rad);
             const sin = Math.sin(rad);
@@ -534,7 +510,7 @@ function getObjectAt(x, y){
             const lx = dx * cos - dy * sin;
             const ly = dx * sin + dy * cos;
 
-            if (Math.abs(ly) < 5 && Math.abs(lx) < obj.laenge / 2) {
+            if (Math.abs(ly) < 8 && Math.abs(lx) < obj.laenge / 2) {
                 return obj;
             }
         }
@@ -543,13 +519,33 @@ function getObjectAt(x, y){
     return null;
 }
 
-// Maus-Handling down
 function onMouseDown(e){
     const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-
     const x = (e.clientX - rect.left);
     const y = (e.clientY - rect.top);
+
+    if (selectedObject && selectedObject.type === "Linie") {
+        const ep = getLineEndpoints(selectedObject);
+        const distA = Math.hypot(x - ep.xA, y - ep.yA);
+        const distE = Math.hypot(x - ep.xE, y - ep.yE);
+        const handleHitRadius = 15;
+        if (distA < handleHitRadius || distE < handleHitRadius) {
+            dragObject = selectedObject;
+            dragMode = (distA <= distE) ? "start" : "end";
+            dragOffsetX = x - dragObject.x;
+            dragOffsetY = y - dragObject.y;
+            isDragging = true;
+            dragObject.vx = 0;
+            dragObject.vy = 0;
+            dragObject.vy_move = 0;
+            dragObject.gravity = 0;
+            dragObject._lastMouseX = x;
+            dragObject._lastMouseY = y;
+            saveOriginalObjectAttrs(dragObject);
+            updateObjectCard(dragObject);
+            return;
+        }
+    }
 
     const obj = getObjectAt(x, y);
 
@@ -557,36 +553,36 @@ function onMouseDown(e){
         isDragging = false;
         dragObject = null;
 
-        // ✅ NEU: Selektion aufheben
         selectedObject = null;
         selectedGroup = null;
+        originalObjectAttrs = null;
 
-        drawObjects(); // sofort visuell aktualisieren
+        drawObjects();
         return;
     }
 
     dragOffsetX = x - obj.x;
     dragOffsetY = y - obj.y;
-
     dragMode = null;
 
       if (obj && obj.type === "Linie") {
 
-        const ep = getLineEndpoints(obj);
+            const ep = getLineEndpoints(obj);
 
         const distA = Math.hypot(x - ep.xA, y - ep.yA);
         const distE = Math.hypot(x - ep.xE, y - ep.yE);
+        const handleHitRadius = 12;
 
-        if (distA < 8) {
+        if (distA < handleHitRadius) {
             dragMode = "start";
         }
-        else if (distE < 8) {
+        else if (distE < handleHitRadius) {
             dragMode = "end";
         }
-        else {
+                    else {
             dragMode = "move";
-        }
-    }
+                    }
+                }
 
     if(obj){
          if (!dragMode) {
@@ -594,17 +590,17 @@ function onMouseDown(e){
             }
 
             obj.vx = 0;
-        obj.vy = 0;
+                    obj.vy = 0;
         obj.vy_move = 0;
-        obj.gravity = 0;
+                    obj.gravity = 0;
         isDragging = true;
-        dragObject = obj;          // ✅ NEU (wichtig!)
+        dragObject = obj;
         selectedObject = obj;
-        selectedGroup = null;
+    selectedGroup = null;
+        saveOriginalObjectAttrs(obj);
         obj._lastMouseX = x;
         obj._lastMouseY = y;
 
-// ✅ prüfen ob Objekt in einer Gruppe ist
         for(let gName in groups){
             if(groups[gName].members.includes(obj.name)){
                 selectedGroup = groups[gName];
@@ -612,33 +608,30 @@ function onMouseDown(e){
             }
         }
 
-
         updateObjectCard(obj);
     }
-    else {
+        else {
         isDragging = false;
         dragObject = null;
         selectedObject = null;
-        selectedGroup = null;
-    }
+    selectedGroup = null;
+        originalObjectAttrs = null;
 }
-//Maus-Handling move
+}
+
 function onMouseMove(e){
 
     if(!isDragging || !dragObject) return;
 
     const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-
     const x = (e.clientX - rect.left);
     const y = (e.clientY - rect.top);
 
-    const obj = dragObject;   // ✅ zuerst definieren
+    const obj = dragObject;
 
     const nx = x - dragOffsetX;
     const ny = y - dragOffsetY;
 
-// ✅ WENN GRUPPE → ALLE BEWEGEN
     if(selectedGroup){
 
         const dx = x - (obj._lastMouseX ?? x);
@@ -668,7 +661,7 @@ function onMouseMove(e){
             const dy = ep.yE - y;
 
             obj.laenge = Math.hypot(dx, dy);
-            obj.winkel = Math.atan2(dy, dx) * 180 / Math.PI;
+            obj.winkel = Math.atan2(-dy, dx) * 180 / Math.PI;
 
             obj.x = (x + ep.xE) / 2;
             obj.y = (y + ep.yE) / 2;
@@ -679,13 +672,12 @@ function onMouseMove(e){
             const dy = y - ep.yA;
 
             obj.laenge = Math.hypot(dx, dy);
-            obj.winkel = Math.atan2(dy, dx) * 180 / Math.PI;
+            obj.winkel = Math.atan2(-dy, dx) * 180 / Math.PI;
 
             obj.x = (ep.xA + x) / 2;
             obj.y = (ep.yA + y) / 2;
         }
         else {
-            // ✅ MOVE → ganze Linie verschieben
             obj.x = nx;
             obj.y = ny;
         }
@@ -708,20 +700,22 @@ function onMouseMove(e){
     }
 
     selectedObject = obj;
-    updateObjectCard(obj);
+    if(isDragging){
+
+        updateObjectCard(obj);
+
+    }
+
     drawObjects();
 }
 
-// Maus-Handling up
 function onMouseUp(){
-    // Wenn nach Loslassen der Maustaste noch ein Objekt oder eine Gruppe
-    // ausgewählt ist, soll die Objektkarte sichtbar bleiben. Nur ausblenden,
-    // wenn nichts ausgewählt ist (z.B. Klick außerhalb der Zeichenfläche).
     if (!selectedObject && !selectedGroup) {
         const card = document.getElementById("object-card");
         if (card) {
             card.style.display = "none";
         }
+        originalObjectAttrs = null;
     }
     if(dragObject){
         delete dragObject._lastMouseX;
@@ -730,16 +724,442 @@ function onMouseUp(){
     canvas.style.cursor = "default";
     isDragging = false;
     dragObject = null;
-    // ✅ Drag wirklich beenden
     dragOffsetX = 0;
     dragOffsetY = 0;
     dragMode = null;
+}
+
+function getObjectAttrValue(obj, key) {
+    if (obj.type === "Linie") {
+        if (key === "xA" || key === "yA" || key === "xE" || key === "yE") {
+            const ep = getLineEndpoints(obj);
+            if (key === "xA") return ep.xA;
+            if (key === "yA") return ep.yA;
+            if (key === "xE") return ep.xE;
+            if (key === "yE") return ep.yE;
+        }
+        if (key === "x" || key === "y") {
+            return undefined;
+        }
+    }
+
+    else if (obj.type === "Rechteck" || obj.type === "Ellipse" || obj.type === "Dreieck") {
+        if (key === "x") {
+            return obj.x - (obj.breite || 0) / 2;
+        }
+        else if (key === "y") {
+            return obj.y - (obj.hoehe || obj.breite || 0) / 2;
+        }
+    }
+
+    else if (obj.type === "Kreis") {
+        if (key === "xM") {
+            return obj.x;
+        }
+        else if (key === "yM") {
+            return obj.y;
+        }
+        else if (key === "x" || key === "y") {
+            return undefined;
+        }
+    }
+
+    return obj[key];
+}
+
+let changeTooltip = null;
+
+function ensureChangeTooltip() {
+    if (!changeTooltip) {
+        changeTooltip = document.createElement('div');
+        changeTooltip.className = 'object-card-tooltip';
+        document.body.appendChild(changeTooltip);
+    }
+    return changeTooltip;
+}
+
+function showChangeTooltip(event, message) {
+      const tooltip = ensureChangeTooltip();
+      tooltip.textContent = message;
+
+      const card = document.getElementById("object-card");
+      if (card) {
+          const rect = card.getBoundingClientRect();
+          tooltip.style.display = 'block';
+          tooltip.style.left = (rect.left) + 'px';
+          tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
+      } else {
+          tooltip.style.display = 'block';
+          tooltip.style.left = (event.clientX + 15) + 'px';
+          tooltip.style.top = (event.clientY - 10) + 'px';
+      }
+  }
+
+function hideChangeTooltip() {
+    const tooltip = ensureChangeTooltip();
+    if (tooltip) {
+        tooltip.style.display = 'none';
+    }
+}
+
+const DEFAULT_VALUES = {
+    Rechteck: { x: 80, y: 80, breite: 100, hoehe: 60, farbe: "blue", winkel: 0, z: 0 },
+    Kreis: { x: 450, y: 110, radius: 40, farbe: "green", winkel: 0, z: 0 },
+    Dreieck: { x: 250, y: 80, breite: 80, hoehe: 60, farbe: "red", winkel: 0, z: 0 },
+    Ellipse: { x: 600, y: 80, breite: 120, hoehe: 60, farbe: "orange", winkel: 0, z: 0 },
+    Linie: { xA: 0, yA: 0, xE: 100, yE: 0, farbe: "black", dicke: 2, winkel: 0, z: 0 }
+};
+
+function getEditorAttributeValues(objName, objType) {
+    if (typeof editorLines === 'undefined' || !objName) return null;
+
+    const attrs = {};
+    const visibleProps = [
+        "x", "y", "breite", "hoehe",
+        "xM", "yM", "radius",
+        "xA", "yA", "xE", "yE",
+        "farbe", "winkel", "z", "dicke"
+    ];
+
+    for (let lineObj of editorLines) {
+        const line = lineObj.text.trim();
+        if (!line || line.startsWith('//')) continue;
+
+        const match = line.match(new RegExp(`(?:^|\\s)${objName}\\.(\\w+)\\s*=\\s*([^;]+)`));
+        if (match) {
+            const attr = match[1];
+            const valueStr = match[2].trim();
+
+            if (visibleProps.includes(attr)) {
+                try {
+                    if (!isNaN(valueStr) && valueStr.trim() !== '') {
+                        attrs[attr] = parseFloat(valueStr);
+                    }
+                    else if (valueStr.startsWith('"') && valueStr.endsWith('"')) {
+                        attrs[attr] = valueStr.slice(1, -1);
+                    }
+                    else if (valueStr.startsWith("'") && valueStr.endsWith("'")) {
+                        attrs[attr] = valueStr.slice(1, -1);
+                    }
+                    else {
+                        attrs[attr] = valueStr;
+                    }
+                } catch (e) {
+                }
+            }
+        }
+    }
+
+    if (Object.keys(attrs).length === 0 && DEFAULT_VALUES[objType]) {
+        return { ...DEFAULT_VALUES[objType] };
+    }
+
+    if (DEFAULT_VALUES[objType]) {
+        for (let prop of visibleProps) {
+            if (attrs[prop] === undefined && DEFAULT_VALUES[objType][prop] !== undefined) {
+                attrs[prop] = DEFAULT_VALUES[objType][prop];
+            }
+        }
+    }
+
+    return attrs;
+}
+
+function saveOriginalObjectAttrs(obj) {
+    if (!obj) {
+        originalObjectAttrs = null;
+        return;
+    }
+
+    if (window.editorObjectReferences && window.editorObjectReferences[obj.name]) {
+        const refObj = window.editorObjectReferences[obj.name];
+        const visibleProps = [
+            "x", "y", "breite", "hoehe",
+            "xM", "yM", "radius",
+            "xA", "yA", "xE", "yE",
+            "farbe", "winkel", "z"
+        ];
+
+        const attrs = {};
+        for (let key of visibleProps) {
+            const value = getObjectAttrValue(refObj, key);
+            if (value !== undefined) {
+                attrs[key] = value;
+            }
+        }
+        originalObjectAttrs = attrs;
+        return;
+    }
+
+    const editorAttrs = getEditorAttributeValues(obj.name, obj.type);
+
+    if (editorAttrs) {
+        const visibleProps = [
+            "x", "y", "breite", "hoehe",
+            "xM", "yM", "radius",
+            "xA", "yA", "xE", "yE",
+            "farbe", "winkel", "z"
+        ];
+
+        const attrs = {};
+        for (let key of visibleProps) {
+            if (obj.type === "Linie" && (key === "xA" || key === "yA" || key === "xE" || key === "yE")) {
+                if (editorAttrs[key] !== undefined) {
+                    attrs[key] = editorAttrs[key];
+                } else {
+                    if (DEFAULT_VALUES.Linie[key] !== undefined) {
+                        attrs[key] = DEFAULT_VALUES.Linie[key];
+                    }
+                }
+            } else {
+                const value = getObjectAttrValue({ ...obj, ...editorAttrs }, key);
+                if (value !== undefined) {
+                    attrs[key] = value;
+                }
+            }
+        }
+        originalObjectAttrs = attrs;
+    }
+}
+
+// Hilfsfunktionen für Objektkarte
+function highlightObjectCardLine(element) {
+    element.classList.add("object-card-hover");
+}
+
+function unhighlightObjectCardLine(element) {
+    element.classList.remove("object-card-hover");
+}
+///Richtige Reihenfolge beim Einfügen
+const ATTRIBUTE_ORDER = {
+
+    Linie: [
+        "xA", "yA",
+        "xE", "yE",
+        "farbe",
+        "dicke",
+        "winkel",
+        "z"
+    ],
+
+    Rechteck: [
+        "x", "y",
+        "breite", "hoehe",
+        "farbe",
+        "winkel",
+        "z"
+    ],
+
+    Dreieck: [
+        "x", "y",
+        "breite", "hoehe",
+        "farbe",
+        "winkel",
+        "z"
+    ],
+
+    Ellipse: [
+        "x", "y",
+        "breite", "hoehe",
+        "farbe",
+        "winkel",
+        "z"
+    ],
+
+    Kreis: [
+        "xM", "yM",
+        "radius",
+        "farbe",
+        "winkel",
+        "z"
+    ]
+};
+
+function insertObjectCardLine(element) {
+
+    const editor = document.getElementById("codeEditor");
+    if (!editor) {
+        console.log("Editor nicht gefunden");
+        return;
+    }
+
+    // Daten aus den data-Attributen extrahieren
+    const objName = element.getAttribute('data-obj');
+    const attrLabel = element.getAttribute('data-attr');
+    const attrValue = element.getAttribute('data-value');
+
+    // Falls keine data-Attribute, aus dem Text extrahieren
+    let lineText = `${attrLabel}: ${attrValue}`;
+    if (!objName || !attrLabel || !attrValue) {
+        lineText = element.innerText.replace(/<span[^>]*>.*<\/span>/g, '').trim();
+    }
+
+    // Aktributzeile generieren (z.B. "r1.x = 100;" oder "r1.farbe = "blau";")
+    let attrLine = `${objName}.${attrLabel} = ${attrValue}`;
+
+    // Für Ebene: "z" -> "ebene"
+    if (attrLabel === "ebene") {
+        attrLine = `${objName}.z = ${attrValue}`;
+    }
+
+    // Für Farbnamen: übersetzen, falls nötig
+    let colorNames;
+    colorNames = {
+        "lila": "\"lila\"",
+        "rot": "\"rot\"",
+        "blau": "\"blau\"",
+        "grün": "\"gruen\"",
+        "orange": "\"orange\"",
+        "gelb": "\"gelb\"",
+        "schwarz": "\"schwarz\"",
+        "weiss": "\"weiss\"",
+        "grau": "\"grau\"",
+        "hellblau": "\"hellblau\"",
+        "hellrot": "\"hellrot\"",
+        "hellgruen": "\"hellgruen\"",
+        "hellbraun": "\"hellbraun\"",
+        "tuerkis": "\"turkis\"",
+        "pink": "\"pink\"",
+        "violett": "\"violett\"",
+
+    };
+    if (attrLabel === "farbe") {
+
+        const colorKey = attrValue.trim().toLowerCase();
+
+        if (colorNames[colorKey]) {
+            attrLine = `${objName}.farbe = ${colorNames[colorKey]}`;
+        }
+    }
+
+    // Semikolon hinzufügen, falls nicht vorhanden
+    if (!attrLine.endsWith(';')) {
+        attrLine += ';';
+    }
+
+    // Konstruktor finden: z.B. "r1 = new Rechteck();"
+    const lines = editor.value.split('\n');
+    let constructorLineIndex = -1;
+    let objType = null;
+
+    for (let i = 0; i < lines.length; i++) {
+
+        const line = lines[i].trim();
+
+        const match = line.match(
+            new RegExp("^" +
+                objName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") +
+                "\\s*=\\s*new\\s+(\\w+)")
+        );
+
+        if (match) {
+
+            constructorLineIndex = i;
+            objType = match[1];
+
+            break;
+        }
+    }
+
+    if (constructorLineIndex === -1) {
+
+        editor.value += '\n' + attrLine + '\n';
+
+    } else {
+
+        let insertIndex = constructorLineIndex + 1;
+
+        // Ende des Attributblocks dieses Objekts suchen
+        while (
+            insertIndex < lines.length &&
+            lines[insertIndex].trim().startsWith(objName + ".")
+            ) {
+            insertIndex++;
+        }
+
+        // Existiert das Attribut bereits?
+        const attrPrefix =
+            new RegExp("^" +
+                objName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") +
+                "\\." +
+                attrLabel +
+                "\\s*=");
+
+        for (let i = constructorLineIndex + 1; i < insertIndex; i++) {
+
+            if (attrPrefix.test(lines[i].trim())) {
+                lines[i] = attrLine;
+                break;
+            }
+
+        }
 
 
+        let block = {};
+
+        let endIndex = constructorLineIndex + 1;
+
+        while (
+            endIndex < lines.length &&
+            lines[endIndex].trim().startsWith(objName + ".")
+            ) {
+
+            const escapedName =
+                objName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+            const m = lines[endIndex]
+                .trim()
+                .match(
+                    new RegExp("^" + escapedName + "\\.(\\w+)")
+                );
+
+
+            if (m) {
+                block[m[1]] = lines[endIndex];
+            }
+
+            endIndex++;
+        }
+
+        block[attrLabel === "ebene" ? "z" : attrLabel] = attrLine;
+
+        const sortedLines = [];
+
+        const order = ATTRIBUTE_ORDER[objType] || [];
+
+        for (let attr of order) {
+
+            if (block[attr]) {
+                sortedLines.push(block[attr]);
+                delete block[attr];
+            }
+        }
+
+        for (let key in block) {
+            sortedLines.push(block[key]);
+        }
+
+        lines.splice(
+            constructorLineIndex + 1,
+            endIndex - constructorLineIndex - 1,
+            ...sortedLines
+        );
+
+        editor.value = lines.join('\n');    }
+
+    // Event auslösen, um den Editor zu aktualisieren
+    const pos =
+        editor.value.indexOf(attrLine) + attrLine.length;
+
+    editor.focus();
+    editor.setSelectionRange(pos, pos);
+    editor.dispatchEvent(new Event("input"));
+    editor.focus();
 }
 
 function updateObjectCard(obj){
 
+    objectCardObjectName = obj.name;
     const card = document.getElementById("object-card");
     if(!card) return;
 
@@ -754,121 +1174,127 @@ function updateObjectCard(obj){
         "z"
     ];
 
+    // Nur positions/größen-bezogene Attribute können sich durch Verschieben ändern
+    const positionProps = [
+        "x", "y", "breite", "hoehe",
+        "xM", "yM", "radius",
+        "xA", "yA", "xE", "yE",
+        "winkel"  // Winkel kann sich bei Linien durch Verschieben ändern
+    ];
+
     for(let key of visibleProps){
-                 let value;
+        let value = getObjectAttrValue(obj, key);
 
-            // ✅ Linie: berechnete Endpunkte anzeigen
-            if (obj.type === "Linie") {
+        // Wenn der Wert undefined ist, überspringen
+        if (value === undefined) continue;
 
-                const ep = getLineEndpoints(obj);
-
-                if (key === "xA") value = Math.round(ep.xA);
-                else if (key === "yA") value = Math.round(ep.yA);
-                else if (key === "xE") value = Math.round(ep.xE);
-                else if (key === "yE") value = Math.round(ep.yE);
-
-                else if (key === "x" || key === "y") {
-                    // Mittelpunkt NICHT anzeigen für Linie
-                    continue;
-                }
-                else if (obj[key] !== undefined) {
-                    value = obj[key];
-                }
+        // Nur position/größen-bezogene Attribute vergleichen
+        // Farbe, Ebene (z), winkel, dicke können sich nicht durch Verschieben ändern
+        let isChanged = false;
+        if (positionProps.includes(key) && originalObjectAttrs && originalObjectAttrs[key] !== undefined) {
+            // Für numerische Werte: Vergleich mit Rundung
+            if (typeof value === "number" && typeof originalObjectAttrs[key] === "number") {
+                const roundedValue = Math.round(value * 100) / 100;
+                const roundedOriginal = Math.round(originalObjectAttrs[key] * 100) / 100;
+                isChanged = roundedValue !== roundedOriginal;
+            } else {
+                // Für Strings und andere Typen: direkter Vergleich
+                isChanged = value !== originalObjectAttrs[key];
             }
+        }
 
-            // ✅ Rechteck / Ellipse / Dreieck → oben links anzeigen
-            else if (obj.type === "Rechteck" || obj.type === "Ellipse" || obj.type === "Dreieck") {
-
-                if (key === "x") {
-                    value = obj.x - (obj.breite || 0) / 2;
-                }
-                else if (key === "y") {
-                    value = obj.y - (obj.hoehe || obj.breite || 0) / 2;
-                }
-                else if (obj[key] !== undefined) {
-                    value = obj[key];
-                }
-            }
-
-            // ✅ Kreis → Mittelpunkt anzeigen (xM, yM)
-            else if (obj.type === "Kreis") {
-
-                if (key === "xM") {
-                    value = obj.x;
-                }
-                else if (key === "yM") {
-                    value = obj.y;
-                }
-                else if (key === "x" || key === "y") {
-                    continue;   // ❌ NICHT anzeigen
-                }
-                else if (obj[key] !== undefined) {
-                    value = obj[key];
-                }
-            }
-
-// ✅ andere Objekte
-            else {
-                if (obj[key] !== undefined) {
-                    value = obj[key];
-                }
-            }
-
-            // ✅ nichts anzeigen wenn nicht gesetzt
-            if (value === undefined) continue;
-
-        // ✅ Farbnamen übersetzen
+        // Farbnamen übersetzen
         if (key === "farbe" && typeof value === "string"){
-             const colors = {
+            const colors = {
                 "#800080": "lila",
-                red: "rot",
-                blue: "blau",
-                green: "grün",
-                orange: "orange",
-                yellow: "gelb",
-                purple: "lila",
-                black: "schwarz",
-                white: "weiß",
-                gray: "grau",
-                grey: "grau"
+                red: "rot", blue: "blau", green: "gruen",
+                orange: "orange", yellow: "gelb",
+                purple: "lila", black: "schwarz", white: "weiss",
+                gray: "grau", grey: "grau",
             };
-
             value = colors[value.toLowerCase()] || value;
         }
 
-            // ✅ Zahlen sauber runden
-            if (typeof value === "number") {
+        // Zahlen sauber runden
+        if (typeof value === "number") {
+            const intProps = [
+                "x","y","xM","yM","xA","yA","xE","yE",
+                "breite","hoehe","radius","dicke","z","eb"
+            ];
 
-                const intProps = [
-                    "x","y","xM","yM","xA","yA","xE","yE",
-                    "breite","hoehe","radius","dicke","z","winkel","eb"
-                ];
-
-                if (intProps.includes(key)){
-                    value = Math.round(value);
-                }
-                else {
-                    value = Math.round(value * 100) / 100;
-                }
+            if (intProps.includes(key)){
+                value = Math.round(value);
+            } else {
+                value = Math.round(value * 100) / 100;
             }
-
-            // ✅ Label anpassen
-            let label = key;
-
-            if(key === "z") label = "ebene";
-
-            attrs += `<div class="uml-line">${label}: ${value}</div>`;
         }
 
+        // ✅ Label anpassen
+        let label = key;
 
+        if(key === "z") label = "ebene";
+
+        // Geänderte Werte fett und blau markieren mit Pfeil und Tooltip
+        const tooltipMsg = "Veränderte Attributwerte müssen noch in den Editor übernommen werden.";
+        const lineText = `${label}: ${value}`;
+        // Escape für HTML-Attribute
+        const escapeHtml = (str) => String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        const safeObjName = escapeHtml(obj.name);
+        const safeLabel = escapeHtml(label);
+        const safeValue = escapeHtml(value);
+        if (isChanged) {
+
+            attrs += `
+<div class="uml-line object-card-changed"
+    
+     data-obj="${safeObjName}"
+     data-attr="${safeLabel}"
+     data-value="${safeValue}"
+     onmouseenter="showChangeTooltip(event, '${tooltipMsg.replace(/'/g, "\\'")}'); highlightObjectCardLine(this)"
+     onmouseleave="hideChangeTooltip(); unhighlightObjectCardLine(this)">
+     ${lineText}
+     <span class="changeArrow">◀</span>
+</div>`;
+
+        }
+        else {
+
+            attrs += `
+<div class="uml-line"
+   
+     data-obj="${safeObjName}"
+     data-attr="${safeLabel}"
+     data-value="${safeValue}"
+     onmouseenter="highlightObjectCardLine(this)"
+     onmouseleave="unhighlightObjectCardLine(this)">
+     ${lineText}
+</div>`;
+
+        }
+    }
 
     attrs += `</div>`;
-
     card.innerHTML = header + attrs;
+
     card.style.display = "block";
+    card.style.position = "relative";
+    card.style.zIndex = "99999";
+
+
+
+    // Event-Delegation für Klicks auf Objektkarten-Zeilen
+
+    card.onclick = function(e) {
+
+        const lineEl = e.target.closest('.uml-line');
+
+        if (lineEl) {
+            insertObjectCardLine(lineEl);
+        }
+    };
+
 }
 
-//Hilfsfunktion für Rotation
 function isInGroup(obj){
     for(let g in groups){
         if(groups[g].members.includes(obj.name)){
@@ -877,7 +1303,7 @@ function isInGroup(obj){
     }
     return false;
 }
-// welche Objekte gehören zu welcher Gruppe?
+
 function getGroupOfObject(objName){
     for(let g in groups){
         if(groups[g].members.includes(objName)){
@@ -887,14 +1313,9 @@ function getGroupOfObject(objName){
     return null;
 }
 
-
 function getRotationCenter(o){
     return { x: o.x, y: o.y };
 }
-
-// =========================
-// Interpreter
-// =========================
 
 function runCode(code, dt){
 
@@ -902,8 +1323,7 @@ function runCode(code, dt){
         objects[k]._inGroupRotation = false;
     }
     if(currentLine === 0){
-        errors = [];
-        //Gruppenrotation zurücksetzen
+    errors = [];
         for(let g in groups){
             delete groups[g]._rotSpeed;
         }
@@ -913,7 +1333,7 @@ function runCode(code, dt){
         waitTimer -= dt;
 
         if(waitTimer <= 0){
-            codeAlreadyRun = false;   // ✅ erlaubt späteres Weiterlaufen
+    codeAlreadyRun = false;
         }
     }
 
@@ -933,8 +1353,6 @@ function runCode(code, dt){
                 continue;
             }
 
-
-            // ✅ 1.: Gruppe.Objekt.Methode
             let groupMethodMatch = line.match(/^(\w+)\.(\w+)\.(\w+)\(([^)]*)\);$/);
 
             if (groupMethodMatch) {
@@ -957,7 +1375,6 @@ function runCode(code, dt){
 
                 const obj = objects[objName];
 
-                // Parameter
                 const params = groupMethodMatch[4]
                     ? groupMethodMatch[4].split(",").map(p => {
                         p = p.trim();
@@ -974,7 +1391,6 @@ function runCode(code, dt){
                 continue;
             }
 
-            // ✅ 2. Objekt.Methode
             let methodMatch = line.match(/^(\w+)\.(\w+)\(([^)]*)\);$/);
 
             let objName = null;
@@ -984,18 +1400,18 @@ function runCode(code, dt){
 
                 objName = methodMatch[1];
                 method = methodMatch[2];
-            //Gruppenprüfung
 
                 if (getGroupOfObject(objName)) {
                     addError(
                         currentLine,
-                        `Objekt '${objName}' gehört zu einer Gruppe`
+                        "Objekt '" + objName + "' gehört zu einer Gruppe '" +
+                        getGroupOfObject(objName) + "'. Verwende " +
+                        getGroupOfObject(objName) + "." + objName
                     );
 
                     currentLine++;
                     continue;
-                }
-                //Existenz prüfen
+            }
                 if (!objects[objName] && !groups[objName]) {
                     addError(
                         currentLine,
@@ -1004,8 +1420,7 @@ function runCode(code, dt){
 
                     currentLine++;
                     continue;
-                }
-            //Methode prüfen
+            }
                 if (!methods[method]) {
                     addError(
                         currentLine,
@@ -1016,7 +1431,6 @@ function runCode(code, dt){
                     continue;
                 }
 
-                // ✅ DIREKT AUSFÜHREN
                 const params = methodMatch[3]
                     ? methodMatch[3].split(",").map(p => {
                         p = p.trim();
@@ -1032,7 +1446,6 @@ function runCode(code, dt){
                         return p;
                     })
                     : [];
-
                 if(objects[objName]){
                     applyMethod(objects[objName], method, params);
                 }
@@ -1044,9 +1457,6 @@ function runCode(code, dt){
                 continue;
             }
 
-
-
-            // ❌ Leerzeichen nach Punkt
             const wrongDot = line.match(/(\w+)\.\s+(\w+)/);
 
             if(wrongDot){
@@ -1058,9 +1468,6 @@ function runCode(code, dt){
                 continue;
             }
 
-            // =========================
-            // ✅ Objekterstellung
-            // =========================
             let groupMatch = line.match(/^(\w+)\s*=\s*new\s+Gruppe\s*\(([^)]*)\);$/);
 
             let createMatch = line.match(/^(\w+)\s*=\s*new\s+(\w+)/);
@@ -1073,7 +1480,6 @@ function runCode(code, dt){
                     .map(x => x.trim())
                     .filter(x => x.length > 0);
 
-                // ✅ Gruppe als Objekt anlegen
                 groups[groupName] = {
                     name: groupName,
                     members: members,
@@ -1081,13 +1487,10 @@ function runCode(code, dt){
                     vy_move: 0,
                     gravity: 0
                 };
-                updateGruppeCardVisibility(); // ✅ NEU: Gruppe erstellt → Karte aktualisieren
-                console.log("Gruppe erstellt:", groupName, "→", members);
-
+    updateGruppeCardVisibility();
                 currentLine++;
                 continue;
-            }
-
+}
 
             if(createMatch){
 
@@ -1113,7 +1516,7 @@ function runCode(code, dt){
                             initialized:false, z:0,
                             ...base
                         };
-                    }
+    }
 
                     else if(type === "Dreieck"){
                         objects[name] = {
@@ -1158,7 +1561,7 @@ function runCode(code, dt){
                             name, type,
                             x:160, y:285,
                             laenge: Math.hypot(220-100, 320-250),
-                            winkel: Math.atan2(320-250, 220-100) * 180/Math.PI,
+                            winkel: Math.atan2(-(220-100), 320-250) * 180/Math.PI,
                             farbe:"#800080", dicke:3,
                             visible:true,
                             pivotX:null, pivotY:null,
@@ -1168,11 +1571,6 @@ function runCode(code, dt){
                     }
                 }
             }
-
-
-            // =========================
-            // ✅ globale Befehle
-            // =========================
 
             let globalCanvasMatch = line.match(/^setzeZeichenflaeche\(([^)]*)\);$/);
 
@@ -1187,7 +1585,6 @@ function runCode(code, dt){
                 continue;
             }
 
-
             let globalWaitMatch = line.match(/^warte\(([^)]*)\);$/);
 
             if(globalWaitMatch){
@@ -1199,17 +1596,6 @@ function runCode(code, dt){
                 return;
             }
 
-
-            // =========================
-            // ✅ Methoden ausführen
-            // =========================
-
-
-
-
-            // =========================
-            // ✅ Eigenschaften setzen
-            // =========================
             const groupPropertyMatch = line.match(/^(\w+)\.(\w+)\.(\w+)\s*=\s*(.+);$/);
             if (groupPropertyMatch) {
 
@@ -1233,8 +1619,6 @@ function runCode(code, dt){
                 const obj = objects[innerObjName];
 
                 if (!obj) {
-                    console.log("DEBUG members:", groups[groupName].members);
-                    console.log("DEBUG gesucht:", innerObjName);
 
                     addError(
                         currentLine,
@@ -1244,7 +1628,6 @@ function runCode(code, dt){
                     continue;
                 }
 
-                // Wert umwandeln
                 if (/^".*"$/.test(value) || /^'.*'$/.test(value)) {
                     value = value.slice(1, -1);
                 } else if (!isNaN(value)) {
@@ -1257,8 +1640,6 @@ function runCode(code, dt){
                 continue;
             }
 
-
-
             let propertyMatch = line.match(/^(\w+)\.(\w+)\s*=\s*(.+);$/);
 
             if(propertyMatch){
@@ -1269,7 +1650,7 @@ function runCode(code, dt){
                 if(groupNameCheck){
                     addError(
                         currentLine,
-                        "Objekt '" + propObjName + "' gehört zu Gruppe '" +
+                        "Objekt '" + propObjName + "' gehört zu einer Gruppe '" +
                         groupNameCheck + "'. Verwende " +
                         groupNameCheck + "." + propObjName
                     );
@@ -1283,7 +1664,6 @@ function runCode(code, dt){
                 if(objects[propObjName]){
 
                     const obj = objects[propObjName];
-
 
                     if(value.startsWith('"') || value.startsWith("'")){
                         value = value.substring(1, value.length - 1).trim();
@@ -1299,20 +1679,25 @@ function runCode(code, dt){
                     }
                     else {
 
-                        // ✅ Rechteck / Ellipse / Dreieck → von oben links auf Mittelpunkt
                         if ((obj.type === "Rechteck" || obj.type === "Ellipse" || obj.type === "Dreieck")) {
 
                             if (prop === "x") {
                                 obj._topLeftX = value;
+                                if (obj.breite !== undefined) {
+                                    obj.x = obj._topLeftX + obj.breite / 2;
+                                }
                             }
                             else if (prop === "y") {
                                 obj._topLeftY = value;
+                                if (obj.hoehe !== undefined || obj.breite !== undefined) {
+                                    const h = obj.hoehe !== undefined ? obj.hoehe : obj.breite;
+                                    obj.y = obj._topLeftY + h / 2;
+                                }
                             }
                             else {
                                 obj[prop] = value;
                             }
 
-                            // ✅ IMMER NACH ALLEM berechnen
                             if (
                                 obj._topLeftX !== null &&
                                 obj._topLeftY !== null &&
@@ -1326,27 +1711,27 @@ function runCode(code, dt){
                             }
                         }
 
-                        // ✅ Linie → aus Start & Endpunkt berechnen
                         else if (obj.type === "Linie") {
 
                             obj[prop] = value;
 
-                            if("xA" in obj && "yA" in obj && "xE" in obj && "yE" in obj)
-                            {
-                                const dx = obj.xE - obj.xA;
-                                const dy = obj.yE - obj.yA;
+                            const ep = getLineEndpoints(obj);
 
-                                obj.laenge = Math.hypot(dx, dy);
-                                obj.winkel = Math.atan2(dy, dx) * 180 / Math.PI;
+                            if (prop === "xA") ep.xA = value;
+                            if (prop === "yA") ep.yA = value;
+                            if (prop === "xE") ep.xE = value;
+                            if (prop === "yE") ep.yE = value;
 
-                                obj.x = (obj.xA + obj.xE) / 2;
-                                obj.y = (obj.yA + obj.yE) / 2;
-                            }
+                            const dx = ep.xE - ep.xA;
+                            const dy = ep.yE - ep.yA;
+
+                            obj.laenge = Math.hypot(dx, dy);
+                            obj.winkel = Math.atan2(-dy, dx) * 180 / Math.PI;
+
+                            obj.x = (ep.xA + ep.xE) / 2;
+                            obj.y = (ep.yA + ep.yE) / 2;
                         }
 
-
-                        // ✅ alles andere normal
-                        // ✅ Kreis: xM / yM unterstützen
                         else if (obj.type === "Kreis") {
 
                             if (prop === "xM") {
@@ -1359,12 +1744,10 @@ function runCode(code, dt){
                                 obj[prop] = value;
                             }
                         }
-                        // ✅ alles andere normal
                         else {
                             obj[prop] = value;
                         }
 
-                        // ✅ Mittelpunkt berechnen (wenn alles vorhanden)
                         if (
                             obj._topLeftX !== null &&
                             obj._topLeftY !== null &&
@@ -1387,24 +1770,17 @@ function runCode(code, dt){
         codeAlreadyRun = true;
     }
 
-    // =========================
-    // Bewegung (wandern)
-    // =========================
-
     for (let key in objects){
 
         const obj = objects[key];
 
         if(obj === dragObject) continue;
 
-        // ✅ NEU: Gruppenzugehörigkeit prüfen
         if (getGroupOfObject(obj.name)) continue;
         if (obj.vx !== 0 || obj.vy_move !== 0) {
             console.log("MOVE:", obj.name, obj.vx);
         }
 
-
-        // ✅ Einzelobjekt bewegen
         if (obj.x !== undefined) {
             obj.x += (obj.vx || 0) * dt;
         }
@@ -1414,10 +1790,6 @@ function runCode(code, dt){
         }
     }
 
-// =========================
-// ✅ PRO-LEVEL: Gruppen-Physik
-// =========================
-
     for (let gName in groups){
 
         const g = groups[gName];
@@ -1425,7 +1797,6 @@ function runCode(code, dt){
 
         g.vy += g.gravity * dt;
 
-// ✅ Bewegung SOFORT anwenden (wichtig!)
         for (let name of g.members){
             const o = objects[name];
             if(!o) continue;
@@ -1433,7 +1804,6 @@ function runCode(code, dt){
             o.y += g.vy * dt;
         }
 
-        // Boden
         if(g.ground !== undefined){
 
             let hit = false;
@@ -1458,7 +1828,6 @@ function runCode(code, dt){
 
             if(hit){
 
-                // ✅ Gruppe nach oben korrigieren
                 let maxOverlap = 0;
 
                 for (let name of g.members){
@@ -1480,7 +1849,6 @@ function runCode(code, dt){
                     }
                 }
 
-                // ✅ ALLE Objekte gleich verschieben
                 for (let name of g.members){
                     const o = objects[name];
                     if(!o) continue;
@@ -1488,19 +1856,15 @@ function runCode(code, dt){
                     o.y -= maxOverlap;
                 }
 
-// ✅  Bounce / Stop
                 if(!g.initialJump){
 
-                    // ✅ FALLEN → sofort stoppen
                     g.vy = 0;
                     g.gravity = 0;
 
                 } else {
 
-                    // ✅ HUEPFEN → gedämpfter Bounce
                     g.vy = -g.vy * (g.bounce || 0.7);
 
-                    // ✅ Stop wenn Energie zu klein
                     if(Math.abs(g.vy) < 20){
                         g.vy = 0;
                         g.gravity = 0;
@@ -1512,22 +1876,12 @@ function runCode(code, dt){
 
     }
 
-
-    // =========================
-    // Physik + Rotation
-    // =========================
-
     for (let key in objects){
         const obj = objects[key];
 
-// ❌ Wenn Objekt in Gruppe → KEINE eigene Physik
-        // ✅ nur stoppen, wenn Objekt AKTUELL wirklich in Gruppe ist
-
         if (getGroupOfObject(obj.name)) continue;
 
-        // ✅ WICHTIG: Objekt gerade gezogen? → KEINE Physik!
         if(obj === dragObject) continue;
-
 
         if(obj.rotSpeed !== 0){
 
@@ -1536,22 +1890,14 @@ function runCode(code, dt){
 
             const angle = obj.rotSpeed * dt;
 
-            // ✅ NUR WINKEL ÄNDERN
-            obj.winkel -= angle;
+            obj.winkel += angle;
         }
 
         if(obj.gravity){
 
             obj.vy += obj.gravity * dt;
 
-            // ✅ NUR Mittelpunkt bewegen
             obj.y += obj.vy * dt;
-
-            // ✅ TopLeft synchronisieren
-            if (obj.type === "Rechteck" || obj.type === "Ellipse" || obj.type === "Dreieck") {
-
-
-            }
 
             const currentY = obj.y;
 
@@ -1559,21 +1905,17 @@ function runCode(code, dt){
 
                 obj.y = obj.ground;
 
-                // ✅ FALLEN → kein Bounce
                 if(!obj.initialJump){
 
                     obj.vy = 0;
                     obj.gravity = 0;
 
                 }
-                // ✅ HUEPFEN → Bounce erlauben
 
                 else {
 
-                    // ✅ HUEPFEN → gedämpfter Bounce
                     obj.vy = -obj.vy * (obj.bounce || 0.7);
 
-                    // ✅ STOP wenn Energie weg
                     if(Math.abs(obj.vy) < 20){
                         obj.vy = 0;
                         obj.gravity = 0;
@@ -1585,9 +1927,6 @@ function runCode(code, dt){
         }
     }
 
-// =========================
-// ✅ Objekte folgen der Gruppe
-// =========================
     for (let gName in groups){
 
         const g = groups[gName];
@@ -1600,20 +1939,13 @@ function runCode(code, dt){
             o.x += (g.vx || 0) * dt;
             o.y += (g.vy_move || 0) * dt;
 
-
         }
     }
-
-    // =========================
-    //(Gruppenrotation)
-    // =========================
-
 
     for(let gName in groups){
 
         const g = groups[gName];
 
-// ✅ NEU: statisches Drehen (einmalig)
         if(g._winkel !== undefined){
 
             let cx = 0, cy = 0, count = 0;
@@ -1630,7 +1962,7 @@ function runCode(code, dt){
             cx /= count;
             cy /= count;
 
-            const rad = g._winkel * Math.PI / 180;
+            const rad = -g._winkel * Math.PI / 180;
 
             for(let name of g.members){
                 const o = objects[name];
@@ -1642,10 +1974,10 @@ function runCode(code, dt){
                 o.x = cx + dx * Math.cos(rad) - dy * Math.sin(rad);
                 o.y = cy + dx * Math.sin(rad) + dy * Math.cos(rad);
 
-                o.winkel = g._winkel;
+                o.winkel += g._winkel;
             }
 
-            delete g._winkel; // ✅ nur einmal drehen!
+            delete g._winkel;
         }
 
         if(!g || !g._rotSpeed) continue;
@@ -1653,16 +1985,21 @@ function runCode(code, dt){
         const speed = g._rotSpeed;
         if(speed === 0) continue;
 
-        // ✅ Mittelpunkt JEDE FRAME neu berechnen
         let cx, cy;
 
-// ✅ WENN Pivot gesetzt → verwenden
         if(g.pivotX !== undefined && g.pivotY !== undefined){
+
+            console.log(
+
+            "GRUPPEN-DREHPUNKT",
+            g.name,
+            g.pivotX,
+            g.pivotY
+        );
             cx = g.pivotX;
             cy = g.pivotY;
         }
         else {
-            // ✅ sonst normalen Mittelpunkt
             cx = 0;
             cy = 0;
             let count = 0;
@@ -1682,7 +2019,7 @@ function runCode(code, dt){
             cy /= count;
         }
 
-        const rad = -speed * dt * Math.PI / 180;
+        const rad = speed * dt * Math.PI / 180;
         const cos = Math.cos(rad);
         const sin = Math.sin(rad);
 
@@ -1695,8 +2032,8 @@ function runCode(code, dt){
             let dx = c.x - cx;
             let dy = c.y - cy;
 
-            const nx = cx + dx * cos - dy * sin;
-            const ny = cy + dx * sin + dy * cos;
+            const nx = cx + dx * cos + dy * sin;
+            const ny = cy - dx * sin + dy * cos;
 
             const shiftX = nx - c.x;
             const shiftY = ny - c.y;
@@ -1704,7 +2041,6 @@ function runCode(code, dt){
             o.x += shiftX;
             o.y += shiftY;
 
-// ✅ Pivot mitverschieben!
             if (o.pivotX !== null) {
                 o.pivotX += shiftX;
             }
@@ -1712,25 +2048,40 @@ function runCode(code, dt){
                 o.pivotY += shiftY;
             }
 
-            o.winkel -= speed * dt;
+            o.winkel += speed * dt;
         }
     }
-
-
-
 
     for(let key in objects){
         objects[key].initialized = true;
     }
 
-    drawRulers();   // ✅ JEDES FRAME neu zeichnen
+    drawRulers();
     alignRulers();
     drawObjects();
 
-    if(selectedObject){
-        updateObjectCard(selectedObject);
-    }
 
+
+    if (rememberedSelectedObjectName && objects[rememberedSelectedObjectName]) {
+
+        selectedObject = objects[rememberedSelectedObjectName];
+        saveOriginalObjectAttrs(selectedObject);
+        //updateObjectCard(selectedObject);
+        // Gruppe des Objekts wiederherstellen
+        selectedGroup = null;
+
+        for (let gName in groups) {
+            if (groups[gName].members.includes(selectedObject.name)) {
+                selectedGroup = groups[gName];
+                break;
+            }
+        }
+
+        updateObjectCard(selectedObject);
+        drawObjects();
+
+        rememberedSelectedObjectName = null;
+    }
 
     function applyMethod(obj, method, params){
         if(methods[method]){
@@ -1743,25 +2094,22 @@ function runCode(code, dt){
     }
 }
 
-// =========================
-// Animation
-// =========================
-
 function startAnimation(){
+
+
+    // Auswahl merken BEVOR stopAnimation() sie löscht
+
+    rememberedSelectedObjectName =
+        objectCardObjectName;
     for(let key in objects){
         objects[key].rotSpeed = 0;
         objects[key].winkel = 0;
     }
 
     isPaused = false;
-    const btn = document.getElementById("pauseBtn");
-    if(btn){
-        btn.textContent = "Pause";
-        btn.classList.remove("active"); // ✅ wieder normal
-    }
-    stopAnimation();   // ✅ alles beenden
 
-    // ✅ IMMER komplett neu starten
+    stopAnimation();
+
     objects = {};
     deadObjects = {};
     groups = {};
@@ -1771,13 +2119,14 @@ function startAnimation(){
     waitTimer = 0;
     errors = [];
 
-    selectedObject = null;
+
+    originalObjectAttrs = null;
     dragObject = null;
     isDragging = false;
     selectedGroup = null;
-    updateGruppeCardVisibility(); // ✅ NEU: Gruppe zurücksetzen → Karte aktualisieren
-    // ✅ currentCode NICHT mehr überschreiben!
-// wird bereits von executeCode() oder runSelection() gesetzt
+
+    updateGruppeCardVisibility();
+
     if(!currentCode){
         console.error("Kein Code vorhanden!");
     }
@@ -1795,6 +2144,7 @@ function startAnimation(){
 
         if(!isPaused){
             runCode(currentCode, dt);
+
             if(currentLine === 0 || !codeAlreadyRun){
                 renderEditor(currentCode);
             }
@@ -1813,17 +2163,15 @@ function stopAnimation(){
         animationId = null;
     }
 
-    // ✅ Interpreter zurücksetzen
     currentLine = 0;
     codeAlreadyRun = false;
     waitTimer = 0;
 
-    // ✅ Auswahl & Drag zurücksetzen
     selectedObject = null;
+    originalObjectAttrs = null;
     dragObject = null;
     isDragging = false;
 
-    // ✅ Canvas neu zeichnen (wichtig!)
     drawObjects();
 
     drawRulers();
@@ -1840,16 +2188,12 @@ function pauseAnimation(){
 
     if(isPaused){
         btn.textContent = "Weiter";
-        btn.classList.add("active");   // ✅ blau
+        btn.classList.add("active");
     } else {
         btn.textContent = "Pause";
-        btn.classList.remove("active"); // ✅ normal
+        btn.classList.remove("active");
     }
 }
-
-// =========================
-// Lineale Zeichnen
-// =========================
 
 function drawRulers() {
 
@@ -1864,36 +2208,24 @@ function drawRulers() {
     const w = logicalWidth;
     const h = logicalHeight;
 
-    // =========================
-    // Reset & Clear
-    // =========================
     ctxTop.setTransform(1, 0, 0, 1, 0, 0);
     ctxTop.clearRect(0, 0, top.width, top.height);
 
     ctxLeft.setTransform(1, 0, 0, 1, 0, 0);
     ctxLeft.clearRect(0, 0, left.width, left.height);
 
-    // =========================
-    // Skalierung setzen
-    // =========================
     ctxTop.save();
     ctxTop.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     ctxLeft.save();
     ctxLeft.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // =========================
-    // Hintergrund
-    // =========================
-    ctxTop.fillStyle = "#f4f4f4";   // hellgrau wie früher
+    ctxTop.fillStyle = "#f4f4f4";
     ctxTop.fillRect(0, 0, w, 20);
 
     ctxLeft.fillStyle = "#f4f4f4";
     ctxLeft.fillRect(0, 0, 30, h);
 
-    // =========================
-    // Stil
-    // =========================
     ctxTop.strokeStyle = "#000";
     ctxLeft.strokeStyle = "#000";
 
@@ -1906,21 +2238,18 @@ function drawRulers() {
     ctxTop.font = "10px Arial";
     ctxLeft.font = "10px Arial";
 
-    // =========================
-    // X-Lineal (oben)
-    // =========================
     for (let x = 0; x <= w; x += 10) {
 
         let length;
 
         if (x % 100 === 0) {
-            length = 15;     // große Striche
+            length = 15;
         }
         else if (x % 50 === 0) {
-            length = 11;     // mittlere Striche ✅
+            length = 11;
         }
         else {
-            length = 6;      // kleine Striche
+            length = 6;
         }
 
         ctxTop.beginPath();
@@ -1928,13 +2257,11 @@ function drawRulers() {
         ctxTop.lineTo(x + 0.5, 20 - length);
         ctxTop.stroke();
 
-        // ✅ Zahlen alle 100px
         if (x % 100 === 0) {
 
             const text = x.toString();
             const textWidth = ctxTop.measureText(text).width;
 
-            // ✅ wenn zu nah am Rand → nach links schieben
             let tx = x + 2;
 
             if (tx + textWidth > w) {
@@ -1946,9 +2273,6 @@ function drawRulers() {
         }
     }
 
-    // =========================
-    // Y-Lineal (links)
-    // =========================
     for (let y = 0; y <= h; y += 10) {
 
         let length;
@@ -1968,15 +2292,12 @@ function drawRulers() {
         ctxLeft.lineTo(30 - length, y + 0.5);
         ctxLeft.stroke();
 
-        // ✅ Zahlen alle 100px
         if (y % 100 === 0) {
 
             const text = y.toString();
 
-            // ✅ Standard-Position
             let ty = y + 10;
 
-            // ✅ wenn unten → nach oben schieben
             if (ty > h - 2) {
                 ty = h - 2;
             }
@@ -1989,7 +2310,6 @@ function drawRulers() {
     ctxLeft.restore();
 }
 
-
 function alignRulers(){
     const left = document.getElementById("rulerLeft");
     const top = document.getElementById("rulerTop");
@@ -1998,10 +2318,6 @@ function alignRulers(){
 
     top.style.marginLeft = offset + "px";
 }
-
-// =========================
-// Positionierungslinien vom Objekt zum Lineal
-// =========================
 
 function drawGuides(obj){
 
@@ -2014,9 +2330,6 @@ function drawGuides(obj){
     ctx.setLineDash([4, 4]);
 
     let x, y;
-
-    // ✅ Rechteck / Ellipse / Dreieck → oben links
-
 
     if (
         obj.type === "Rechteck" ||
@@ -2042,13 +2355,11 @@ function drawGuides(obj){
 
     if (x === undefined) return;
 
-    // vertikal
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(x, 0);
     ctx.stroke();
 
-    // horizontal
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(0, y);
@@ -2057,29 +2368,19 @@ function drawGuides(obj){
     ctx.restore();
 }
 
-
-
-
-// =========================
-// Zeichnen
-// =========================
-
 function drawObjects() {
 
     if (!ctx || !canvas) return;
 
-    // ✅ Canvas sauber löschen (ohne Transform!)
     const dpr = window.devicePixelRatio || 1;
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-// ✅ ganz wichtig: wieder skalieren
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const list = Object.values(objects);
 
-// hinten → vorne sortieren
     list.sort((a, b) => (a.z || 0) - (b.z || 0));
 
     for (let obj of list) {
@@ -2091,7 +2392,6 @@ function drawObjects() {
             color = "blue";
         }
 
-// ✅ HIER DIE MAGIE
         const renderColor =
             (typeof color === "string"
                 ? colorMap[color.toLowerCase()]
@@ -2100,22 +2400,15 @@ function drawObjects() {
         ctx.fillStyle = renderColor;
         ctx.strokeStyle = renderColor;
 
-
-        // =========================
-        // RECHTECK
-        // =========================
         if (obj.type === "Rechteck") {
 
             const x = obj.x - obj.breite / 2;
             const y = obj.y - obj.hoehe / 2;
             ctx.save();
 
-// ✅ optional: Rotation um Mittelpunkt
-
-
             if (obj.winkel) {
                 ctx.translate(obj.x, obj.y);
-                ctx.rotate(obj.winkel * Math.PI / 180);
+                ctx.rotate(-obj.winkel * Math.PI / 180);
                 ctx.fillRect(-obj.breite/2, -obj.hoehe/2, obj.breite, obj.hoehe);
             } else {
                 ctx.fillRect(x, y, obj.breite, obj.hoehe);
@@ -2124,10 +2417,6 @@ function drawObjects() {
             ctx.restore();
         }
 
-
-            // =========================
-            // KREIS
-        // =========================
         else if (obj.type === "Kreis") {
 
             ctx.save();
@@ -2140,15 +2429,12 @@ function drawObjects() {
             ctx.restore();
         }
 
-            // =========================
-            // ELLIPSE
-        // =========================
         else if (obj.type === "Ellipse") {
 
             ctx.save();
 
             ctx.translate(obj.x, obj.y);
-            ctx.rotate((obj.winkel || 0) * Math.PI / 180);
+            ctx.rotate(-(obj.winkel || 0) * Math.PI / 180);
 
             ctx.beginPath();
             ctx.ellipse(0, 0, obj.breite/2, obj.hoehe/2, 0, 0, 2*Math.PI);
@@ -2157,14 +2443,11 @@ function drawObjects() {
             ctx.restore();
         }
 
-            // =========================
-            // DREIECK
-        // =========================
         else if (obj.type === "Dreieck") {
 
             ctx.save();
             ctx.translate(obj.x, obj.y);
-            ctx.rotate((obj.winkel || 0) * Math.PI / 180);
+            ctx.rotate(-(obj.winkel || 0) * Math.PI / 180);
 
             ctx.beginPath();
 
@@ -2178,15 +2461,11 @@ function drawObjects() {
             ctx.restore();
         }
 
-
-// =========================
-// LINIE
-// =========================
         else if (obj.type === "Linie") {
 
             ctx.save();
             ctx.translate(obj.x, obj.y);
-            ctx.rotate(obj.winkel * Math.PI / 180);
+            ctx.rotate(-obj.winkel * Math.PI / 180);
 
             ctx.beginPath();
             ctx.moveTo(-obj.laenge/2, 0);
@@ -2196,7 +2475,6 @@ function drawObjects() {
 
             ctx.restore();
 
-            // ✅ Endpunkte zeichnen (nur wenn selektiert)
             if (obj === selectedObject) {
 
                 const ep = getLineEndpoints(obj);
@@ -2204,7 +2482,7 @@ function drawObjects() {
                 ctx.fillStyle = "#fff";
                 ctx.strokeStyle = "#333";
 
-                const r = 5;
+                const r = 7;
 
                 ctx.beginPath();
                 ctx.arc(ep.xA, ep.yA, r, 0, 2*Math.PI);
@@ -2218,16 +2496,12 @@ function drawObjects() {
             }
         }
 
-
-
-// ✅ ✅ ✅ HIER EINFÜGEN (Markierung)
         if (
             obj === selectedObject ||
             (selectedGroup && selectedGroup.members.includes(obj.name))
         ) {
             ctx.strokeStyle = "#555";
             ctx.lineWidth = 1;
-
 
             if (
                 obj.type === "Rechteck" ||
@@ -2236,11 +2510,10 @@ function drawObjects() {
             )
             {
 
-
                 ctx.save();
 
                 ctx.translate(obj.x, obj.y);
-                ctx.rotate((obj.winkel || 0) * Math.PI / 180);
+                ctx.rotate(-(obj.winkel || 0) * Math.PI / 180);
 
                 ctx.strokeRect(
                     -obj.breite / 2,
@@ -2262,7 +2535,7 @@ function drawObjects() {
 
                 ctx.save();
                 ctx.translate(obj.x, obj.y);
-                ctx.rotate(obj.winkel * Math.PI/180);
+                ctx.rotate(-obj.winkel * Math.PI/180);
 
                 ctx.strokeStyle = "#555";
                 ctx.lineWidth = (obj.dicke || 2) + 1;
@@ -2275,20 +2548,15 @@ function drawObjects() {
                 ctx.restore();
             }
 
-
         }
 
     }
-    // ✅ Guides IMMER ganz oben zeichnen
+
     if (dragObject || selectedObject) {
         drawGuides(dragObject || selectedObject);
     }
 
 }
-
-// =========================
-// ✅ Vollbild-Skalierung
-// =========================
 
 function scaleCanvasToScreen(){
 
@@ -2302,7 +2570,6 @@ function scaleCanvasToScreen(){
 
     const scale = Math.min(scaleX, scaleY);
 
-    // ✅ Mittelpunkt verwenden!
     wrapper.style.position = "absolute";
     wrapper.style.left = "50%";
     wrapper.style.top = "50%";
@@ -2321,34 +2588,26 @@ function resetCanvasScale(){
     wrapper.style.top = "";
 }
 
-// =========================
-// Reset
-// =========================
-
 function resetObjects(){
     objects = {};
     deadObjects = {};
     groups = {};
     selectedGroup = null;
 
-    updateGruppeCardVisibility(); // ✅ NEU
+    updateGruppeCardVisibility();
 }
-// =========================
-// ✅ Resize im Vollbild
-// =========================
-
 window.addEventListener("resize", () => {
     if (document.fullscreenElement) {
         scaleCanvasToScreen();
     }
+});
 
-    document.addEventListener("fullscreenchange", () => {
+document.addEventListener("fullscreenchange", () => {
 
-        const container = document.getElementById("right");
+    const container = document.getElementById("right");
 
-        if (!document.fullscreenElement) {
-            container.classList.remove("fullscreen-mode");
-            resetCanvasScale();
-        }
-    });
+    if (!document.fullscreenElement) {
+        container.classList.remove("fullscreen-mode");
+        resetCanvasScale();
+    }
 });
