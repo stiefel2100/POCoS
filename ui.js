@@ -274,7 +274,7 @@ const LINE_HEIGHT = 20; // Muss zur CSS line-height passen
 /* Hilfsdaten */
 const knownProps = [
     // Geometrie
-    "x","y","breite","hoehe","farbe",
+    "x","y","breite","hoehe","versatz","farbe",
     "xM","yM","radius","ebene",
     "xA","yA","xE","yE","dicke", "z",
 
@@ -290,7 +290,7 @@ const classAttributes = {
     "Rechteck": ["x", "y", "breite", "hoehe", "farbe", "visible", "z", "ebene", "winkel", "pivotX", "pivotY"],
     "Kreis": ["x", "xM", "y", "yM", "radius", "farbe", "visible", "z", "ebene", "winkel", "pivotX", "pivotY"],
     "Ellipse": ["x", "y", "breite", "hoehe", "farbe", "visible", "z", "ebene", "winkel", "pivotX", "pivotY"],
-    "Dreieck": ["x", "y", "breite", "hoehe", "farbe", "visible", "z", "ebene", "winkel", "pivotX", "pivotY"],
+    "Dreieck": ["x", "y", "breite", "hoehe", "versatz", "farbe", "visible", "z", "ebene", "winkel", "pivotX", "pivotY"],
     "Linie": ["x", "y", "xA", "yA", "xE", "yE", "laenge", "winkel", "farbe", "dicke", "visible", "z", "ebene", "pivotX", "pivotY"],
     "Gruppe": ["vx", "vy_move", "gravity"]
 };
@@ -473,6 +473,8 @@ const tooltips = {
     breite: "Breite des Objekts.\n\nEinheit: Pixel\n\nBeispiel:\nbreite = 100;",
 
     hoehe: "Höhe des Objekts. Negative Höhen führen dazu, dass die Spitze nach unte zeigt.\n\nEinheit: Pixel\n\nBeispiel:\nhoehe = 60;",
+
+    versatz: "Seitlicher Versatz der Dreiecksspitze parallel zur Grundlinie.\n\nPositive Werte: nach rechts.\nNegative Werte: nach links.\n\nEinheit: Pixel\n\nBeispiel:\nversatz = 20;",
 
     farbe: "Farbe des Objekts.\n\nMögliche Werte: \"rot\", \"blau\", …\n\nBeispiel:\nfarbe = \"rot\";",
 
@@ -2211,9 +2213,9 @@ __________________________________________________
 Zeichen-Editor für Punktnotation (6. Jahrgangsstufe BY)
 
                © Thomas Helfer, 2026
-               
+               Version: 1.1
+
 Nur für Unterrichtszwecke. Weitergabe erlaubt.
-Version: 1.0
 `;
 
 

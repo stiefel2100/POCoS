@@ -815,7 +815,7 @@ function getEditorAttributeValues(objName, objType) {
 
     const attrs = {};
     const visibleProps = [
-        "x", "y", "breite", "hoehe",
+        "x", "y", "breite", "hoehe", "versatz",
         "xM", "yM", "radius",
         "xA", "yA", "xE", "yE",
         "farbe", "winkel", "z", "dicke"
@@ -874,7 +874,7 @@ function saveOriginalObjectAttrs(obj) {
     if (window.editorObjectReferences && window.editorObjectReferences[obj.name]) {
         const refObj = window.editorObjectReferences[obj.name];
         const visibleProps = [
-            "x", "y", "breite", "hoehe",
+            "x", "y", "breite", "hoehe", "versatz",
             "xM", "yM", "radius",
             "xA", "yA", "xE", "yE",
             "farbe", "winkel", "z"
@@ -895,7 +895,7 @@ function saveOriginalObjectAttrs(obj) {
 
     if (editorAttrs) {
         const visibleProps = [
-            "x", "y", "breite", "hoehe",
+            "x", "y", "breite", "hoehe", "versatz",
             "xM", "yM", "radius",
             "xA", "yA", "xE", "yE",
             "farbe", "winkel", "z"
@@ -953,6 +953,7 @@ const ATTRIBUTE_ORDER = {
     Dreieck: [
         "x", "y",
         "breite", "hoehe",
+        "versatz",
         "farbe",
         "winkel",
         "z"
@@ -1167,7 +1168,7 @@ function updateObjectCard(obj){
     let attrs = `<div class="class-attributes">`;
 
     const visibleProps = [
-        "x", "y", "breite", "hoehe",
+        "x", "y", "breite", "hoehe", "versatz",
         "xM", "yM", "radius",
         "xA", "yA", "xE", "yE",
         "farbe","winkel",
@@ -1176,7 +1177,7 @@ function updateObjectCard(obj){
 
     // Nur positions/größen-bezogene Attribute können sich durch Verschieben ändern
     const positionProps = [
-        "x", "y", "breite", "hoehe",
+        "x", "y", "breite", "hoehe", "versatz",
         "xM", "yM", "radius",
         "xA", "yA", "xE", "yE",
         "winkel"  // Winkel kann sich bei Linien durch Verschieben ändern
@@ -2449,9 +2450,11 @@ function drawObjects() {
             ctx.translate(obj.x, obj.y);
             ctx.rotate(-(obj.winkel || 0) * Math.PI / 180);
 
+            const offset = Number(obj.versatz || 0);
+
             ctx.beginPath();
 
-            ctx.moveTo(0, -obj.hoehe / 2);
+            ctx.moveTo(offset, -obj.hoehe / 2);
             ctx.lineTo(-obj.breite / 2, obj.hoehe / 2);
             ctx.lineTo(obj.breite / 2, obj.hoehe / 2);
 
